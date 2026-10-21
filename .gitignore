@@ -1,0 +1,23 @@
+node_modules/
+dist/
+build/
+*.log
+
+# databases
+server/database/*.sqlite
+server/database/*.sqlite-wal
+server/database/*.sqlite-shm
+
+# uploads
+server/storage/uploads/*
+!server/storage/uploads/.gitkeep
+
+# local env
+.env
+.env.local
+server/.env
+
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
