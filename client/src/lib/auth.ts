@@ -7,15 +7,29 @@ export interface AuthUser {
   member_code?: string
   role?: string
   roles?: string[]
+  role_labels?: string[]
   permissions?: string[]
   is_admin?: boolean
   verification_status?: string
-  current_rank?: { name: string } | null
+  current_rank?: { id: number; name: string } | null
+}
+
+function readStoredUser(): AuthUser | null {
+  const raw = localStorage.getItem('nexora_user')
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as AuthUser
+  } catch {
+    localStorage.removeItem('nexora_user')
+    return null
+  }
 }
 
 export function useAuth() {
-  const [user, setUser] = useState<AuthUser | null>(null)
-  const [loading, setLoading] = useState(true)
+  // Read synchronously so the first paint already knows who is signed in and
+  // the sidebar renders the right navigation without a flash.
+  const [user, setUser] = useState<AuthUser | null>(readStoredUser)
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     const raw = localStorage.getItem('nexora_user')
@@ -24,6 +38,7 @@ export function useAuth() {
         setUser(JSON.parse(raw))
       } catch {
         localStorage.removeItem('nexora_user')
+        setUser(null)
       }
     }
     setLoading(false)

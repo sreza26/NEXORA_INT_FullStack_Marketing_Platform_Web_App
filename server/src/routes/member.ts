@@ -21,6 +21,8 @@ import {
   storeDeposit,
   transactions,
   notifications,
+  notificationUnreadCount,
+  announcements,
   readAllNotifications,
   security,
   updateSecurityPassword,
@@ -67,7 +69,9 @@ router.get('/withdrawals', withdrawals)
 router.post('/withdrawals', sensitive, storeWithdrawal)
 router.get('/transactions', transactions)
 router.get('/notifications', notifications)
+router.get('/notifications/unread-count', notificationUnreadCount)
 router.post('/notifications/read-all', sensitive, readAllNotifications)
+router.get('/announcements', announcements)
 router.get('/security', security)
 router.put('/security/password', sensitive, updateSecurityPassword)
 

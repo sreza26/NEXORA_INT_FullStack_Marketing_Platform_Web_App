@@ -317,6 +317,40 @@ export function notifications(req: Request, res: Response) {
   res.json({ notifications })
 }
 
+/**
+ * Unread counter behind the member header bell.
+ *
+ * The Laravel layout reads `auth()->user()->unreadNotifications_count`; the
+ * React client polls this lightweight endpoint instead of loading the whole
+ * notification list on every page.
+ */
+export function notificationUnreadCount(req: Request, res: Response) {
+  const memberId = req.user!.id
+  const row = db
+    .prepare('SELECT COUNT(*) AS c FROM notifications WHERE member_id = ? AND read_at IS NULL')
+    .get(memberId) as { c: number }
+  res.json({ count: row.c })
+}
+
+/**
+ * Published announcements shown in the member portal banner.
+ *
+ * Mirrors the Laravel view composer, which shares the five most recent
+ * published announcements with the member layout.
+ */
+export function announcements(req: Request, res: Response) {
+  const rows = db
+    .prepare(
+      `SELECT id, title, body, severity, published_at
+       FROM announcements
+       WHERE is_published = 1 AND (expires_at IS NULL OR expires_at > datetime('now'))
+       ORDER BY published_at DESC, id DESC
+       LIMIT 5`,
+    )
+    .all()
+  res.json({ announcements: rows })
+}
+
 export function readAllNotifications(req: Request, res: Response) {
   const memberId = req.user!.id
   db.prepare("UPDATE notifications SET read_at = datetime('now') WHERE member_id = ? AND read_at IS NULL").run(memberId)

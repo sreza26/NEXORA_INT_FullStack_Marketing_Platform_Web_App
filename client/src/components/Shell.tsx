@@ -1,5 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
+import { Bell, LogOut, Menu, X } from 'lucide-react'
+import { hasAnyPermission, hasPermission, type AuthUser } from '../lib/auth'
 
 export interface NavItem {
   to: string
@@ -9,30 +11,58 @@ export interface NavItem {
   permission?: string
   /** Any one of these permissions is enough. */
   anyPermission?: string[]
+  /** Match the route exactly instead of by prefix. */
+  end?: boolean
+  /** Count rendered as a pill on the right hand side of the entry. */
+  badge?: number
 }
 
 export interface NavGroup {
   heading: string
   items: NavItem[]
+  /** Permission that gates the whole group, matching the Laravel wrappers. */
+  permission?: string
+}
+
+export interface ShellProps {
+  groups: NavGroup[]
+  variant?: 'member' | 'admin'
+  /** Signed-in account. Drives permission gating and the header block. */
+  account: AuthUser | null
+  /** Secondary line under the account name (member code, role labels). */
+  subtitle?: string
+  /** Rendered on the left of the header (verification and rank badges). */
+  headerBadges?: React.ReactNode
+  /** Rendered on the right of the header, before the account block. */
+  headerActions?: React.ReactNode
+  /** Extra entries rendered above the log out button in the sidebar. */
+  footerLinks?: NavItem[]
+  /** Banner rendered between the header and the page content. */
+  banner?: React.ReactNode
+  children: React.ReactNode
+}
+
+export function isNavItemVisible(item: NavItem, account: AuthUser | null): boolean {
+  if (item.permission) return hasPermission(account, item.permission)
+  if (item.anyPermission?.length) return hasAnyPermission(account, item.anyPermission)
+  return true
 }
 
 export function Shell({
   groups,
-  title,
   variant = 'member',
-  badge,
-  user,
+  account,
+  subtitle = '',
+  headerBadges,
+  headerActions,
+  footerLinks = [],
+  banner,
   children,
-}: {
-  groups: NavGroup[]
-  title: string
-  variant?: 'member' | 'admin'
-  badge?: React.ReactNode
-  user?: { name: string; subtitle: string }
-  children: React.ReactNode
-}) {
+}: ShellProps) {
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const isAdmin = variant === 'admin'
+  const name = account?.name ?? 'Member'
 
   function logout() {
     localStorage.removeItem('nexora_token')
@@ -41,7 +71,7 @@ export function Shell({
   }
 
   return (
-    <div className="min-h-screen bg-surface lg:flex">
+    <div className="min-h-screen lg:flex">
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex w-72 -translate-x-full flex-col bg-navy-950 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${
           mobileOpen ? 'translate-x-0' : ''
@@ -51,7 +81,7 @@ export function Shell({
           <NavLink to="/" className="flex items-center gap-2">
             <span
               className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-black text-navy-950 ${
-                variant === 'admin' ? 'bg-gold-400' : 'bg-accent-500'
+                isAdmin ? 'bg-gold-400' : 'bg-accent-500'
               }`}
             >
               LX
@@ -60,10 +90,10 @@ export function Shell({
               <span className="block font-black text-white">NEXORA</span>
               <span
                 className={`block text-[10px] uppercase tracking-widest ${
-                  variant === 'admin' ? 'text-gold-400' : 'text-slate-500'
+                  isAdmin ? 'text-gold-400' : 'text-slate-500'
                 }`}
               >
-                {variant === 'admin' ? 'Admin Console' : 'Marketing & Network Management Platform'}
+                {isAdmin ? 'Admin Console' : 'Marketing & Network Management Platform'}
               </span>
             </div>
           </NavLink>
@@ -73,36 +103,53 @@ export function Shell({
             onClick={() => setMobileOpen(false)}
             aria-label="Close menu"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="h-5 w-5">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4 text-sm" aria-label={variant === 'admin' ? 'Admin console' : 'Member portal'}>
-          {groups.map((group) => (
-            <div key={group.heading}>
-              <p className="px-3 pb-2 pt-5 text-[10px] font-bold uppercase tracking-widest text-slate-500 first:pt-0">
-                {group.heading}
-              </p>
-              {group.items.map((item) => (
-                <NavLink key={item.to} to={item.to} className={({ isActive }) => `side-link ${isActive ? 'side-link-active' : ''}`}>
-                  {item.icon}
-                  {item.label}
-                </NavLink>
-              ))}
-            </div>
-          ))}
+        <nav
+          className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4 text-sm"
+          aria-label={isAdmin ? 'Admin console' : 'Member portal'}
+        >
+          {groups.map((group) => {
+            if (group.permission && !hasPermission(account, group.permission)) return null
+            const items = group.items.filter((item) => isNavItemVisible(item, account))
+            if (items.length === 0) return null
+            return (
+              <div key={group.heading}>
+                <p className="px-3 pb-2 pt-5 text-[10px] font-bold uppercase tracking-widest text-slate-500 first:pt-0">
+                  {group.heading}
+                </p>
+                {items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    className={({ isActive }) => `side-link ${isActive ? 'side-link-active' : ''}`}
+                  >
+                    {item.icon}
+                    {item.label}
+                    {item.badge !== undefined && item.badge > 0 && (
+                      <span className="ml-auto rounded-full bg-accent-500 px-1.5 text-[10px] font-bold text-navy-950">
+                        {item.badge}
+                      </span>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            )
+          })}
         </nav>
 
         <div className="space-y-1 border-t border-white/5 p-3">
-          {variant === 'admin' && (
-            <NavLink to="/member" className="side-link">
-              Member portal
+          {footerLinks.map((item) => (
+            <NavLink key={item.to} to={item.to} className="side-link">
+              {item.icon}
+              {item.label}
             </NavLink>
-          )}
+          ))}
           <button type="button" onClick={logout} className="side-link w-full text-left">
+            <LogOut className="h-4 w-4 shrink-0" />
             Log out
           </button>
         </div>
@@ -120,44 +167,58 @@ export function Shell({
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="h-5 w-5">
-              <line x1="4" y1="12" x2="20" y2="12"></line>
-              <line x1="4" y1="6" x2="20" y2="6"></line>
-              <line x1="4" y1="18" x2="20" y2="18"></line>
-            </svg>
+            <Menu className="h-5 w-5" />
           </button>
 
-          {variant === 'admin' ? (
+          {isAdmin ? (
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Admin Console</span>
           ) : (
-            <div className="hidden items-center gap-2 text-sm text-slate-500 sm:flex">{badge}</div>
+            <div className="hidden items-center gap-2 text-sm text-slate-500 sm:flex">{headerBadges}</div>
           )}
 
           <div className="ml-auto flex items-center gap-3">
-            {user && (
-              <div className="flex items-center gap-2">
-                <span
-                  className={`flex h-8 w-8 items-center justify-center rounded-full bg-navy-900 text-xs font-bold ${
-                    variant === 'admin' ? 'text-gold-400' : 'text-accent-400'
-                  }`}
-                >
-                  {user.name.slice(0, 1).toUpperCase()}
-                </span>
-                <div className="hidden text-left leading-tight sm:block">
-                  <p className="text-sm font-semibold text-navy-900">{user.name}</p>
-                  <p className="text-[11px] text-slate-400">{user.subtitle}</p>
-                </div>
+            {headerActions}
+            <div className="flex items-center gap-2">
+              <span
+                className={`flex h-8 w-8 items-center justify-center rounded-full bg-navy-900 text-xs font-bold ${
+                  isAdmin ? 'text-gold-400' : 'text-accent-400'
+                }`}
+              >
+                {name.slice(0, 1).toUpperCase()}
+              </span>
+              <div className="hidden text-left leading-tight sm:block">
+                <p className="text-sm font-semibold text-navy-900">{name}</p>
+                <p className="text-[11px] text-slate-400">{subtitle}</p>
               </div>
-            )}
+            </div>
           </div>
         </header>
 
-        <main className="p-4 sm:p-6 lg:p-8">
-          <h1 className="mb-6 text-xl font-bold text-navy-900 sm:text-2xl">{title}</h1>
-          {children}
-        </main>
+        {banner}
+
+        <main className="p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
     </div>
+  )
+}
+
+/**
+ * Notification bell with an unread counter, matching the Laravel header.
+ */
+export function NotificationBell({ count }: { count: number }) {
+  return (
+    <NavLink
+      to="/member/notifications"
+      className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+      aria-label="Notifications"
+    >
+      <Bell className="h-5 w-5" />
+      {count > 0 && (
+        <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white">
+          {count > 9 ? '9+' : count}
+        </span>
+      )}
+    </NavLink>
   )
 }
 

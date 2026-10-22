@@ -98,8 +98,13 @@ export function deleteMember(req: Request, res: Response) {
 
 export function memberVerify(req: Request, res: Response) {
   const id = Number(req.params.id)
-  svc.verifyMemberIdentity(id, 'verified')
-  svc.recordAudit(getAdminId(req), 'member.verified', 'user', id, {}, req.ip)
+  const schema = z.object({
+    decision: z.enum(['verified', 'rejected']).optional().default('verified'),
+    note: z.string().optional().nullable(),
+  })
+  const data = schema.parse(req.body ?? {})
+  svc.verifyMemberIdentity(id, data.decision as 'verified' | 'rejected')
+  svc.recordAudit(getAdminId(req), `member.${data.decision}`, 'user', id, { note: data.note ?? null }, req.ip)
   res.json({ success: true })
 }
 

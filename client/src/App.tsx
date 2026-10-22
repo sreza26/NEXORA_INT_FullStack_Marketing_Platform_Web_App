@@ -3,6 +3,9 @@ import LandingPage from './pages/LandingPage'
 import PublicLayout from './pages/PublicLayout'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
+import ResetPasswordPage from './pages/auth/ResetPasswordPage'
+import VerifyEmailPage from './pages/auth/VerifyEmailPage'
 import GuestLayout from './pages/auth/GuestLayout'
 import Referral from './pages/Referral'
 import { MarketingPlan, PublicRewards, RankPlan } from './pages/PublicPages'
@@ -27,9 +30,36 @@ import Security from './pages/member/Security'
 import AdminLayout from './pages/admin/AdminLayout'
 import Overview from './pages/admin/Overview'
 import Members from './pages/admin/Members'
+import MemberShow from './pages/admin/MemberShow'
+import MemberEdit from './pages/admin/MemberEdit'
+import Verifications from './pages/admin/Verifications'
+import Roles from './pages/admin/Roles'
+import AdminTransactions from './pages/admin/Transactions'
+import AdminLedger from './pages/admin/Ledger'
+import AdminDeposits from './pages/admin/Deposits'
+import Reconciliation from './pages/admin/Reconciliation'
+import Network from './pages/admin/Network'
+import CompensationPlans from './pages/admin/CompensationPlans'
+import AdminCommissions from './pages/admin/Commissions'
+import Ranks from './pages/admin/Ranks'
+import RankReports from './pages/admin/RankReports'
+import AdminSalary from './pages/admin/Salary'
+import RewardClaims from './pages/admin/RewardClaims'
+import Announcements from './pages/admin/Announcements'
+import AuditLogs from './pages/admin/AuditLogs'
+import Jobs from './pages/admin/Jobs'
+import Settings from './pages/admin/Settings'
 import AdminWithdrawals from './pages/admin/AdminWithdrawals'
 import AdminRewards from './pages/admin/AdminRewards'
 import Reports from './pages/admin/Reports'
+
+/**
+ * Roles allowed into the admin console.
+ *
+ * Mirrors the Laravel admin route group middleware
+ * `role:super_admin,finance_admin,compliance_officer,support_agent`.
+ */
+const STAFF_ROLES = ['super_admin', 'finance_admin', 'compliance_officer', 'support_agent']
 
 function Protected({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
   const location = useLocation()
@@ -47,7 +77,7 @@ function Protected({ children, adminOnly = false }: { children: React.ReactNode;
     } catch {
       roles = []
     }
-    if (roles.length === 0 || roles.every((role) => role === 'member')) {
+    if (!roles.some((role) => STAFF_ROLES.includes(role))) {
       return <Navigate to="/member" replace />
     }
   }
@@ -73,6 +103,9 @@ function App() {
       <Route element={<GuestLayout />}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
       </Route>
 
       <Route
@@ -111,9 +144,28 @@ function App() {
       >
         <Route index element={<Overview />} />
         <Route path="members" element={<Members />} />
+        <Route path="members/:id" element={<MemberShow />} />
+        <Route path="members/:id/edit" element={<MemberEdit />} />
+        <Route path="verifications" element={<Verifications />} />
+        <Route path="roles" element={<Roles />} />
+        <Route path="transactions" element={<AdminTransactions />} />
+        <Route path="ledger" element={<AdminLedger />} />
+        <Route path="deposits" element={<AdminDeposits />} />
+        <Route path="reconciliation" element={<Reconciliation />} />
+        <Route path="reports" element={<Reports />} />
+        <Route path="announcements" element={<Announcements />} />
+        <Route path="audit-logs" element={<AuditLogs />} />
+        <Route path="jobs" element={<Jobs />} />
+        <Route path="settings" element={<Settings />} />
+        <Route path="network" element={<Network />} />
+        <Route path="compensation-plans" element={<CompensationPlans />} />
+        <Route path="commissions" element={<AdminCommissions />} />
+        <Route path="ranks" element={<Ranks />} />
+        <Route path="rank-reports" element={<RankReports />} />
+        <Route path="salary" element={<AdminSalary />} />
+        <Route path="reward-claims" element={<RewardClaims />} />
         <Route path="withdrawals" element={<AdminWithdrawals />} />
         <Route path="rewards" element={<AdminRewards />} />
-        <Route path="reports" element={<Reports />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

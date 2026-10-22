@@ -15,6 +15,7 @@ export interface UserRow {
   current_rank_id: number | null
   status: string
   verification_status: string
+  email_verified_at: string | null
   registered_at: string | null
   created_at: string
   updated_at: string
@@ -22,7 +23,11 @@ export interface UserRow {
 
 export interface UserWithRoles extends UserRow {
   roles: string[]
+  /** Human readable role labels, matching the Laravel admin header. */
+  role_labels: string[]
   permissions: string[]
+  /** Name of the rank the member currently holds, when one is assigned. */
+  current_rank: { id: number; name: string } | null
 }
 
 export function generateMemberCode(): string {
@@ -62,10 +67,22 @@ export function findUserByCode(code: string): UserWithRoles | null {
 
 export function withRoles(row: UserRow): UserWithRoles {
   const roles = db
-    .prepare('SELECT r.name FROM roles r JOIN user_roles ur ON ur.role_id = r.id WHERE ur.user_id = ?')
-    .all(row.id) as { name: string }[]
+    .prepare('SELECT r.name, r.label FROM roles r JOIN user_roles ur ON ur.role_id = r.id WHERE ur.user_id = ?')
+    .all(row.id) as { name: string; label: string | null }[]
   const roleNames = roles.map((r) => r.name)
-  return { ...row, roles: roleNames, permissions: loadUserPermissions(row.id, roleNames) }
+  const roleLabels = roles.map((r) => r.label || r.name)
+  const rank = row.current_rank_id
+    ? (db.prepare('SELECT id, name FROM ranks WHERE id = ?').get(row.current_rank_id) as
+        | { id: number; name: string }
+        | undefined) ?? null
+    : null
+  return {
+    ...row,
+    roles: roleNames,
+    role_labels: roleLabels,
+    permissions: loadUserPermissions(row.id, roleNames),
+    current_rank: rank,
+  }
 }
 
 export function createUser(input: {
@@ -81,8 +98,8 @@ export function createUser(input: {
   const memberCode = generateMemberCode()
   const info = db
     .prepare(
-      `INSERT INTO users (name, email, password_hash, phone, member_code, sponsor_id, status, verification_status, registered_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), datetime('now'))`,
+      `INSERT INTO users (name, email, password_hash, phone, member_code, sponsor_id, status, verification_status, registered_at, email_verified_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), NULL, datetime('now'), datetime('now'))`,
     )
     .run(
       input.name,

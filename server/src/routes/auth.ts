@@ -1,5 +1,14 @@
 import { Router } from 'express'
-import { login, me, register } from '../controllers/auth.js'
+import {
+  emailVerificationStatus,
+  forgotPassword,
+  login,
+  me,
+  register,
+  resetPassword,
+  sendEmailVerification,
+  verifyEmail,
+} from '../controllers/auth.js'
 import { authenticate } from '../middlewares/auth.js'
 import { clientIp, rateLimit } from '../middlewares/rateLimit.js'
 import { config } from '../config/index.js'
@@ -31,5 +40,21 @@ router.post(
 )
 
 router.get('/me', authenticate, me)
+
+// Laravel throttle:sensitive -> the password reset flow shares the limiter
+// with the other sensitive member routes (10 requests per minute).
+const sensitive = rateLimit({
+  scope: 'sensitive',
+  windowMs: config.rateLimit.sensitive.windowMs,
+  max: config.rateLimit.sensitive.max,
+  key: (req) => `${req.body?.email ? String(req.body.email).toLowerCase() : 'guest'}|${clientIp(req)}`,
+})
+
+router.post('/forgot-password', sensitive, forgotPassword)
+router.post('/reset-password', sensitive, resetPassword)
+
+router.get('/email/verification', authenticate, emailVerificationStatus)
+router.post('/email/verification-notification', sensitive, sendEmailVerification)
+router.get('/email/verify', verifyEmail)
 
 export default router

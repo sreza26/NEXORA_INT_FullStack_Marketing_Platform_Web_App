@@ -2,6 +2,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Menu } from 'lucide-react'
+import { useBodyClass } from '../lib/useBodyClass'
 
 const navLinks = [
   { to: '/marketing-plan', label: 'Marketing Plan' },
@@ -11,6 +12,7 @@ const navLinks = [
 ]
 
 export default function PublicLayout() {
+  useBodyClass('flex min-h-screen flex-col')
   const { pathname } = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [body, setBody] = useState<HTMLElement | null>(null)
