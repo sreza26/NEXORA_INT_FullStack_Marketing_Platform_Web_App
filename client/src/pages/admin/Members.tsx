@@ -38,28 +38,33 @@ export default function Members() {
 
   return (
     <>
-      <div className="card" style={{ marginBottom: '1.5rem' }}>
-        <div className="card-body" style={{ gridTemplateColumns: '1fr auto', alignItems: 'end' }}>
-          <label className="label">
-            Search members
-            <input className="input" value={search} placeholder="Name, email or member code"
+      <div className="mt-6 card card-pad">
+        <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+          <div>
+            <label className="label" htmlFor="member-search">Search members</label>
+            <input
+              className="input"
+              id="member-search"
+              value={search}
+              placeholder="Name, email or member code"
               onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') load(search) }} />
-          </label>
+              onKeyDown={(e) => { if (e.key === 'Enter') load(search) }}
+            />
+          </div>
           <button className="btn btn-primary" onClick={() => load(search)}>Search</button>
         </div>
       </div>
 
-      {message && <p style={{ color: 'var(--warning)', marginBottom: '1rem' }}>{message}</p>}
+      {message && <p className="flash-ok mt-4">{message}</p>}
 
-      <div className="card">
-        <header className="card-header">
+      <div className="mt-6 card card-pad">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3>Members</h3>
-            <p style={{ color: 'var(--text-muted)' }}>Manage account status and verification</p>
+            <h2 className="font-bold text-navy-900">Members</h2>
+            <p className="text-sm text-slate-500">Manage account status and verification</p>
           </div>
-        </header>
-        <div className="card-body" style={{ padding: '0.5rem 0 0' }}>
+        </div>
+        <div className="table-wrap mt-4">
           <Table
             head={['Name', 'Email', 'Code', 'Status', 'Verification', 'Actions']}
             rows={items.map((m) => [
@@ -73,18 +78,18 @@ export default function Members() {
               }`,
             ])}
           />
-          <div style={{ display: 'grid', gap: '0.6rem', marginTop: '1rem' }}>
-            {items.map((m) => (
-              <div key={m.id} style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                <button className="btn btn-ghost" onClick={() => setStatus(m.id, m.status === 'suspended' ? 'active' : 'suspended')}>
-                  {m.status === 'suspended' ? 'Activate' : 'Suspend'}
-                </button>
-                <button className="btn btn-ghost" onClick={() => setVerification(m.id, m.verification_status === 'verified' ? 'pending' : 'verified')}>
-                  {m.verification_status === 'verified' ? 'Unverify' : 'Verify'}
-                </button>
-              </div>
-            ))}
-          </div>
+        </div>
+        <div className="mt-4 grid gap-2">
+          {items.map((m) => (
+            <div key={m.id} className="flex flex-wrap gap-2">
+              <button className="btn btn-ghost btn-sm" onClick={() => setStatus(m.id, m.status === 'suspended' ? 'active' : 'suspended')}>
+                {m.status === 'suspended' ? 'Activate' : 'Suspend'}
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setVerification(m.id, m.verification_status === 'verified' ? 'pending' : 'verified')}>
+                {m.verification_status === 'verified' ? 'Unverify' : 'Verify'}
+              </button>
+            </div>
+          ))}
         </div>
       </div>
     </>

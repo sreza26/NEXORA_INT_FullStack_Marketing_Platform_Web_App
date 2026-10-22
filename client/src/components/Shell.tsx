@@ -1,12 +1,34 @@
 import { NavLink, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 
 export interface NavItem {
   to: string
   label: string
+  icon?: React.ReactNode
 }
 
-export function Shell({ items, title, children }: { items: NavItem[]; title: string; children: React.ReactNode }) {
+export interface NavGroup {
+  heading: string
+  items: NavItem[]
+}
+
+export function Shell({
+  groups,
+  title,
+  variant = 'member',
+  badge,
+  user,
+  children,
+}: {
+  groups: NavGroup[]
+  title: string
+  variant?: 'member' | 'admin'
+  badge?: React.ReactNode
+  user?: { name: string; subtitle: string }
+  children: React.ReactNode
+}) {
   const navigate = useNavigate()
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   function logout() {
     localStorage.removeItem('nexora_token')
@@ -15,53 +37,138 @@ export function Shell({ items, title, children }: { items: NavItem[]; title: str
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '250px 1fr', minHeight: '100vh' }}>
-      <aside style={{ borderRight: '1px solid var(--border)', padding: '1.8rem 1.2rem', display: 'grid', gap: '0.4rem', alignContent: 'start' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', marginBottom: '1.5rem' }}>
-          <div style={{ width: '2.2rem', height: '2.2rem', borderRadius: '50%', background: 'linear-gradient(135deg, #22d3ee, #a78bfa)' }} />
-          <span style={{ fontWeight: 800, letterSpacing: '0.3em' }}>NEXORA</span>
-        </div>
-        {items.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end
-            style={({ isActive }) => ({
-              padding: '0.65rem 1rem',
-              borderRadius: '12px',
-              color: isActive ? 'var(--primary)' : 'var(--text-muted)',
-              background: isActive ? 'rgba(34,211,238,0.08)' : 'transparent',
-            })}
-          >
-            {item.label}
+    <div className="min-h-screen bg-surface lg:flex">
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 -translate-x-full flex-col bg-navy-950 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${
+          mobileOpen ? 'translate-x-0' : ''
+        }`}
+      >
+        <div className="flex h-16 items-center justify-between px-5">
+          <NavLink to="/" className="flex items-center gap-2">
+            <span
+              className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-black text-navy-950 ${
+                variant === 'admin' ? 'bg-gold-400' : 'bg-accent-500'
+              }`}
+            >
+              LX
+            </span>
+            <div className="leading-tight">
+              <span className="block font-black text-white">NEXORA</span>
+              <span
+                className={`block text-[10px] uppercase tracking-widest ${
+                  variant === 'admin' ? 'text-gold-400' : 'text-slate-500'
+                }`}
+              >
+                {variant === 'admin' ? 'Admin Console' : 'Marketing & Network Management Platform'}
+              </span>
+            </div>
           </NavLink>
-        ))}
-        <button className="btn btn-ghost" style={{ marginTop: '1.5rem' }} onClick={logout}>Sign out</button>
+          <button
+            type="button"
+            className="text-slate-400 hover:text-white lg:hidden"
+            onClick={() => setMobileOpen(false)}
+            aria-label="Close menu"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="h-5 w-5">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4 text-sm" aria-label={variant === 'admin' ? 'Admin console' : 'Member portal'}>
+          {groups.map((group) => (
+            <div key={group.heading}>
+              <p className="px-3 pb-2 pt-5 text-[10px] font-bold uppercase tracking-widest text-slate-500 first:pt-0">
+                {group.heading}
+              </p>
+              {group.items.map((item) => (
+                <NavLink key={item.to} to={item.to} className={({ isActive }) => `side-link ${isActive ? 'side-link-active' : ''}`}>
+                  {item.icon}
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        <div className="space-y-1 border-t border-white/5 p-3">
+          {variant === 'admin' && (
+            <NavLink to="/member" className="side-link">
+              Member portal
+            </NavLink>
+          )}
+          <button type="button" onClick={logout} className="side-link w-full text-left">
+            Log out
+          </button>
+        </div>
       </aside>
-      <main style={{ padding: '2.2rem 2.6rem' }}>
-        <header style={{ marginBottom: '1.8rem' }}>
-          <h1 style={{ fontSize: '1.9rem' }}>{title}</h1>
+
+      {mobileOpen && (
+        <div className="fixed inset-0 z-40 bg-navy-950/50 lg:hidden" onClick={() => setMobileOpen(false)} />
+      )}
+
+      <div className="min-w-0 flex-1">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-slate-200 bg-white/90 px-4 backdrop-blur sm:px-6">
+          <button
+            type="button"
+            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden"
+            onClick={() => setMobileOpen(true)}
+            aria-label="Open menu"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="h-5 w-5">
+              <line x1="4" y1="12" x2="20" y2="12"></line>
+              <line x1="4" y1="6" x2="20" y2="6"></line>
+              <line x1="4" y1="18" x2="20" y2="18"></line>
+            </svg>
+          </button>
+
+          {variant === 'admin' ? (
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Admin Console</span>
+          ) : (
+            <div className="hidden items-center gap-2 text-sm text-slate-500 sm:flex">{badge}</div>
+          )}
+
+          <div className="ml-auto flex items-center gap-3">
+            {user && (
+              <div className="flex items-center gap-2">
+                <span
+                  className={`flex h-8 w-8 items-center justify-center rounded-full bg-navy-900 text-xs font-bold ${
+                    variant === 'admin' ? 'text-gold-400' : 'text-accent-400'
+                  }`}
+                >
+                  {user.name.slice(0, 1).toUpperCase()}
+                </span>
+                <div className="hidden text-left leading-tight sm:block">
+                  <p className="text-sm font-semibold text-navy-900">{user.name}</p>
+                  <p className="text-[11px] text-slate-400">{user.subtitle}</p>
+                </div>
+              </div>
+            )}
+          </div>
         </header>
-        {children}
-      </main>
+
+        <main className="p-4 sm:p-6 lg:p-8">
+          <h1 className="mb-6 text-xl font-bold text-navy-900 sm:text-2xl">{title}</h1>
+          {children}
+        </main>
+      </div>
     </div>
   )
 }
 
 export function Stat({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="card">
-      <div className="card-body">
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</p>
-        <p style={{ fontSize: '1.8rem', fontWeight: 700 }}>{value}</p>
-      </div>
+    <div className="stat-card">
+      <p className="stat-label">{label}</p>
+      <p className="stat-value">{value}</p>
     </div>
   )
 }
 
 export function Table({ head, rows }: { head: string[]; rows: (string | number)[][] }) {
   return (
-    <table className="table">
+    <table className="data-table">
       <thead>
         <tr>{head.map((h) => <th key={h}>{h}</th>)}</tr>
       </thead>

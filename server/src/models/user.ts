@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import { db } from '../db/index.js'
 import { config } from '../config/index.js'
+import { linkReferralClosures } from '../services/closure.js'
 
 export interface UserRow {
   id: number
@@ -101,6 +102,11 @@ export function createUser(input: {
   }
   db.prepare('INSERT INTO wallet_accounts (member_id, currency) VALUES (?, ?)').run(userId, config.currency)
   db.prepare('INSERT INTO member_profiles (member_id) VALUES (?)').run(userId)
+  try {
+    linkReferralClosures(userId)
+  } catch {
+    // Referral closure rebuild is best-effort at registration time.
+  }
 
   return findUserById(userId)!
 }

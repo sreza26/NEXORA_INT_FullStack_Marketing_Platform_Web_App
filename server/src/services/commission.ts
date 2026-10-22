@@ -1,11 +1,40 @@
 import { db } from '../db/index.js'
-import { config } from '../config/index.js'
+import { config, type GenerationRate } from '../config/index.js'
 import { postLedger } from '../models/ledger.js'
 
 export interface CommissionResult {
   created: number
   skipped: number
   total: number
+}
+
+export interface CommissionOptions {
+  /** Commission status written on creation. Defaults to the legacy 'approved'. */
+  status?: string
+  /** Credit the member wallet right away. Defaults to true. */
+  credit?: boolean
+  /** Overrides the configured generation rates. */
+  rates?: GenerationRate[]
+  /** Compensation plan the commissions were calculated from. */
+  planId?: number | null
+  /** Base amount used for the calculation, stored for auditing. */
+  baseAmount?: number
+}
+
+/** Percentage rate for a generation, taken from the banded compensation plan. */
+export function rateForGeneration(generation: number): number {
+  const band = config.commission.generationRates.find(
+    (entry) => generation >= entry.generation_from && generation <= entry.generation_to,
+  )
+  return band ? band.rate : 0
+}
+
+/** Highest generation the compensation plan pays out on. */
+export function maxPayoutGeneration(): number {
+  return config.commission.generationRates.reduce(
+    (max, entry) => Math.max(max, entry.generation_to),
+    0,
+  )
 }
 
 /**
@@ -17,8 +46,13 @@ export function generateCommissions(
   sourceMemberId: number,
   sourceTransactionId: number,
   amount: number,
+  options: CommissionOptions = {},
 ): CommissionResult {
   if (!config.commission.enabled) return { created: 0, skipped: 0, total: 0 }
+
+  const rates = options.rates ?? config.commission.generationRates
+  const status = options.status ?? 'approved'
+  const credit = options.credit ?? true
 
   const sponsor = db.prepare('SELECT sponsor_id FROM users WHERE id = ?').get(sourceMemberId) as
     | { sponsor_id: number | null }
@@ -29,9 +63,14 @@ export function generateCommissions(
   let created = 0
   let skipped = 0
   let total = 0
+  const limit = Math.max(
+    config.commission.generation,
+    rates.reduce((max, entry) => Math.max(max, entry.generation_to), 0),
+  )
 
-  while (currentSponsorId && generation <= config.commission.generation) {
-    const rate = config.commission.rates[generation - 1] ?? 0
+  while (currentSponsorId && generation <= limit) {
+    const band = rates.find((entry) => generation >= entry.generation_from && generation <= entry.generation_to)
+    const rate = band ? band.rate / 100 : 0
     const commissionAmount = Math.round(amount * rate * 100) / 100
 
     if (commissionAmount > 0) {
@@ -46,20 +85,33 @@ export function generateCommissions(
       } else {
         const info = db
           .prepare(
-            `INSERT INTO commissions (recipient_id, source_member_id, source_transaction_id, generation, amount, rate, status)
-             VALUES (?, ?, ?, ?, ?, ?, 'approved')`,
+            `INSERT INTO commissions (recipient_id, source_member_id, source_transaction_id, generation, amount, rate, status, plan_id, base_amount, idempotency_key)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
-          .run(currentSponsorId, sourceMemberId, sourceTransactionId, generation, commissionAmount, rate)
+          .run(
+            currentSponsorId,
+            sourceMemberId,
+            sourceTransactionId,
+            generation,
+            commissionAmount,
+            band ? band.rate : 0,
+            status,
+            options.planId ?? null,
+            options.baseAmount ?? amount,
+            `${sourceTransactionId}:${currentSponsorId}:${generation}`,
+          )
 
-        postLedger({
-          memberId: currentSponsorId,
-          type: 'commission',
-          direction: 'credit',
-          amount: commissionAmount,
-          referenceType: 'commission',
-          referenceId: Number(info.lastInsertRowid),
-          description: `Generation ${generation} commission`,
-        })
+        if (credit) {
+          postLedger({
+            memberId: currentSponsorId,
+            type: 'commission',
+            direction: 'credit',
+            amount: commissionAmount,
+            referenceType: 'commission',
+            referenceId: Number(info.lastInsertRowid),
+            description: `Generation ${generation} commission`,
+          })
+        }
         created += 1
         total += commissionAmount
       }

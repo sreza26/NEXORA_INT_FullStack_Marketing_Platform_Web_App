@@ -37,6 +37,7 @@ export interface RegisterPayload {
   name: string;
   email: string;
   phone?: string;
+  country?: string;
   password: string;
   password_confirmation: string;
   sponsor_code?: string;

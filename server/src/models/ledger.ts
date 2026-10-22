@@ -7,6 +7,28 @@ export function walletBalance(memberId: number): number {
   return row?.balance ?? 0
 }
 
+export function syncWalletTotals(memberId: number): void {
+  const row = db
+    .prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN direction = 'credit' AND status <> 'reversed' THEN amount ELSE 0 END), 0) AS credited,
+         COALESCE(SUM(CASE WHEN direction = 'debit' AND status <> 'reversed' THEN amount ELSE 0 END), 0) AS debited,
+         COALESCE(SUM(CASE WHEN direction = 'credit' AND status = 'pending' THEN amount
+                           WHEN direction = 'debit' AND status = 'pending' THEN -amount ELSE 0 END), 0) AS pending
+       FROM ledger_entries WHERE member_id = ?`,
+    )
+    .get(memberId) as { credited: number; debited: number; pending: number } | undefined
+
+  db.prepare(
+    `UPDATE wallet_accounts SET
+       pending_balance = ?,
+       lifetime_credited = ?,
+       lifetime_debited = ?,
+       updated_at = datetime('now')
+     WHERE member_id = ?`,
+  ).run(row?.pending ?? 0, row?.credited ?? 0, row?.debited ?? 0, memberId)
+}
+
 export function listLedger(memberId: number, limit = 100, offset = 0) {
   return db
     .prepare(
@@ -50,6 +72,7 @@ export function postLedger(entry: {
   )
 
   db.prepare('UPDATE wallet_accounts SET balance = ?, updated_at = datetime(\'now\') WHERE member_id = ?').run(next, entry.memberId)
+  syncWalletTotals(entry.memberId)
 
   return next
 }
@@ -81,5 +104,6 @@ export function reverseLedger(referenceType: string, referenceId: number, descri
       description,
     )
     db.prepare('UPDATE wallet_accounts SET balance = ?, updated_at = datetime(\'now\') WHERE member_id = ?').run(next, entry.member_id)
+    syncWalletTotals(entry.member_id)
   }
 }

@@ -35,35 +35,33 @@ export default function Reports() {
     }
   }
 
-  if (!stats) return <p>Loading…</p>
+  if (!stats) return <p className="text-sm text-slate-400">Loading…</p>
 
   return (
     <>
-      <div className="card" style={{ marginBottom: '2rem' }}>
-        <header className="card-header">
+      <div className="mt-6 card card-pad">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3>Platform reports</h3>
-            <p style={{ color: 'var(--text-muted)' }}>Export member data or run scheduled jobs</p>
+            <h2 className="font-bold text-navy-900">Platform reports</h2>
+            <p className="text-sm text-slate-500">Export member data or run scheduled jobs</p>
           </div>
-        </header>
-        <div className="card-body">
-          <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
-            <a className="btn btn-primary" href="/api/admin/report?format=xlsx">Download XLSX report</a>
-            <a className="btn btn-ghost" href="/api/admin/report?format=csv">Download CSV report</a>
-            <button className="btn btn-ghost" onClick={recordPurchase}>Record a purchase</button>
-            <button className="btn btn-ghost" onClick={runSalary}>Run monthly salary</button>
-          </div>
-          {message && <p style={{ color: 'var(--primary)', marginTop: '1rem' }}>{message}</p>}
         </div>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <a className="btn btn-primary" href="/api/admin/report?format=xlsx">Download XLSX report</a>
+          <a className="btn btn-ghost" href="/api/admin/report?format=csv">Download CSV report</a>
+          <button className="btn btn-ghost" onClick={recordPurchase}>Record a purchase</button>
+          <button className="btn btn-ghost" onClick={runSalary}>Run monthly salary</button>
+        </div>
+        {message && <p className="flash-ok mt-4">{message}</p>}
       </div>
 
-      <div className="card">
-        <header className="card-header">
+      <div className="mt-6 card card-pad">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3>Snapshot</h3>
+            <h2 className="font-bold text-navy-900">Snapshot</h2>
           </div>
-        </header>
-        <div className="card-body" style={{ padding: '0.5rem 0 0' }}>
+        </div>
+        <div className="table-wrap mt-4">
           <Table
             head={['Metric', 'Value']}
             rows={[

@@ -1,71 +1,124 @@
-import { Link, Outlet } from 'react-router-dom'
+import { Link, Outlet, useLocation } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { Menu } from 'lucide-react'
+
+const navLinks = [
+  { to: '/marketing-plan', label: 'Marketing Plan' },
+  { to: '/rank-plan', label: 'Rank Plan' },
+  { to: '/rewards', label: 'Rewards' },
+  { to: '/contact', label: 'Contact' },
+]
 
 export default function PublicLayout() {
-  return (
-    <div style={{ display: 'flex', minHeight: '100vh', flexDirection: 'column' }}>
-      <header style={{ position: 'sticky', top: 0, zIndex: 40, borderBottom: '1px solid rgba(226, 232, 240, 0.8)', background: 'rgba(255, 255, 255, 0.9)', backdropFilter: 'blur(12px)' }}>
-        <div className="container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '4rem' }}>
-          <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
-            <span className="logo-mark">LX</span>
-            <span style={{ display: 'grid', lineHeight: 1 }}>
-              <span style={{ fontWeight: 900, letterSpacing: '-0.01em', color: 'var(--color-navy-900)' }}>NEXORA</span>
-              <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.28em', color: '#94a3b8' }}>Marketing & Network Management Platform</span>
+  const { pathname } = useLocation()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [body, setBody] = useState<HTMLElement | null>(null)
+
+  useEffect(() => {
+    setBody(document.body)
+  }, [])
+
+  const isActive = (to: string) => (to === '/' ? pathname === '/' : pathname.startsWith(to))
+
+  const content = (
+    <>
+      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          <Link to="/" className="flex items-center gap-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy-900 text-sm font-black text-accent-400">LX</span>
+            <span className="leading-tight">
+              <span className="block text-lg font-black tracking-tight text-navy-900">NEXORA</span>
+              <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">Marketing &amp; Network Management Platform</span>
             </span>
           </Link>
-          <nav style={{ display: 'flex', alignItems: 'center', gap: '1.8rem', flexWrap: 'wrap' }}>
-            <Link to="/marketing-plan" style={{ fontSize: '0.98rem', color: '#475569', fontWeight: 500 }}>Marketing Plan</Link>
-            <Link to="/rank-plan" style={{ fontSize: '0.98rem', color: '#475569', fontWeight: 500 }}>Rank Plan</Link>
-            <Link to="/rewards" style={{ fontSize: '0.98rem', color: '#475569', fontWeight: 500 }}>Rewards</Link>
-            <Link to="/contact" style={{ fontSize: '0.98rem', color: '#475569', fontWeight: 500 }}>Contact</Link>
-            <Link className="btn btn-ghost" to="/login">Log in</Link>
-            <Link className="btn btn-accent" to="/register">Join now</Link>
+
+          <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
+            {navLinks.map((link) => (
+              <Link key={link.to} to={link.to} className={`top-link ${isActive(link.to) ? 'top-link-active' : ''}`}>
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+
+          <div className="flex items-center gap-2">
+            <Link to="/login" className="btn btn-ghost btn-sm">Log in</Link>
+            <Link to="/register" className="btn btn-accent btn-sm hidden sm:inline-block">Join now</Link>
+            <button
+              type="button"
+              className="rounded-lg p-2 text-navy-900 hover:bg-slate-100 md:hidden"
+              data-nav-toggle
+              aria-expanded={menuOpen}
+              aria-controls="public-mobile-nav"
+              aria-label="Open menu"
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+          </div>
+        </div>
+
+        <div
+          id="public-mobile-nav"
+          className={`${menuOpen ? '' : 'hidden'} border-t border-slate-100 bg-white md:hidden`}
+        >
+          <nav className="mx-auto max-w-7xl space-y-1 px-4 py-3 sm:px-6" aria-label="Mobile">
+            {navLinks.map((link) => (
+              <Link key={link.to} to={link.to} className={`top-link block rounded-lg px-3 py-2.5 ${isActive(link.to) ? 'top-link-active' : ''}`}>
+                {link.label}
+              </Link>
+            ))}
+            <Link to="/register" className="btn btn-accent mt-2 block w-full text-center sm:hidden">Join now</Link>
           </nav>
         </div>
       </header>
-      <main style={{ flex: 1 }}>
+
+      <main className="flex-1">
         <Outlet />
       </main>
-      <footer style={{ borderTop: '1px solid var(--border)', background: '#fff', marginTop: '4rem' }}>
-        <div className="container" style={{ display: 'grid', gap: '2rem', padding: '2.8rem 0', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+
+      <footer className="border-t border-slate-200 bg-white">
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-4 lg:px-8">
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
-              <span className="logo-mark logo-mark-sm">LX</span>
-              <span style={{ fontWeight: 900, color: 'var(--color-navy-900)' }}>NEXORA</span>
+            <div className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-navy-900 text-xs font-black text-accent-400">LX</span>
+              <span className="font-black text-navy-900">NEXORA</span>
             </div>
-            <p style={{ marginTop: '0.8rem', color: '#64748b', maxWidth: '320px' }}>Marketing & Network Management Platform</p>
+            <p className="mt-3 text-sm text-slate-500">Marketing &amp; Network Management Platform</p>
           </div>
           <div>
-            <h4 style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.18em', color: '#94a3b8' }}>Platform</h4>
-            <ul style={{ display: 'grid', gap: '0.6rem', marginTop: '0.9rem', listStyle: 'none' }}>
-              <li><Link to="/marketing-plan" style={{ color: '#475569' }}>Marketing Plan</Link></li>
-              <li><Link to="/rank-plan" style={{ color: '#475569' }}>Rank Plan</Link></li>
-              <li><Link to="/rewards" style={{ color: '#475569' }}>Rewards</Link></li>
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Platform</h4>
+            <ul className="mt-3 space-y-2 text-sm text-slate-600">
+              <li><Link to="/marketing-plan" className="hover:text-accent-600">Marketing Plan</Link></li>
+              <li><Link to="/rank-plan" className="hover:text-accent-600">Rank Plan</Link></li>
+              <li><Link to="/rewards" className="hover:text-accent-600">Rewards</Link></li>
             </ul>
           </div>
           <div>
-            <h4 style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.18em', color: '#94a3b8' }}>Legal</h4>
-            <ul style={{ display: 'grid', gap: '0.6rem', marginTop: '0.9rem', listStyle: 'none' }}>
-              <li><Link to="/terms" style={{ color: '#475569' }}>Terms &amp; Conditions</Link></li>
-              <li><Link to="/privacy" style={{ color: '#475569' }}>Privacy Policy</Link></li>
-              <li><Link to="/income-disclosure" style={{ color: '#475569' }}>Income Disclosure</Link></li>
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Legal</h4>
+            <ul className="mt-3 space-y-2 text-sm text-slate-600">
+              <li><Link to="/terms" className="hover:text-accent-600">Terms of Service</Link></li>
+              <li><Link to="/privacy" className="hover:text-accent-600">Privacy Policy</Link></li>
+              <li><Link to="/income-disclosure" className="hover:text-accent-600">Income Disclosure</Link></li>
             </ul>
           </div>
           <div>
-            <h4 style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.18em', color: '#94a3b8' }}>Account</h4>
-            <ul style={{ display: 'grid', gap: '0.6rem', marginTop: '0.9rem', listStyle: 'none' }}>
-              <li><Link to="/login" style={{ color: '#475569' }}>Log in</Link></li>
-              <li><Link to="/register" style={{ color: '#475569' }}>Join now</Link></li>
-              <li><Link to="/contact" style={{ color: '#475569' }}>Contact</Link></li>
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Account</h4>
+            <ul className="mt-3 space-y-2 text-sm text-slate-600">
+              <li><Link to="/login" className="hover:text-accent-600">Member login</Link></li>
+              <li><Link to="/register" className="hover:text-accent-600">Create account</Link></li>
+              <li><Link to="/contact" className="hover:text-accent-600">Support</Link></li>
             </ul>
           </div>
         </div>
-        <div style={{ borderTop: '1px solid var(--border)' }}>
-          <div className="container" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: '0.8rem', padding: '1rem 0', color: '#94a3b8', fontSize: '0.95rem' }}>
-            <span>© {new Date().getFullYear()} NEXORA. All rights reserved.</span>
-            <span>Marketing & Network Management Platform</span>
-          </div>
+        <div className="border-t border-slate-100 py-5 text-center text-xs text-slate-400">
+          &copy; {new Date().getFullYear()} NEXORA. All rights reserved.
         </div>
       </footer>
-    </div>
+    </>
   )
+
+  if (!body) return null
+
+  return createPortal(content, body)
 }

@@ -3,16 +3,27 @@ import LandingPage from './pages/LandingPage'
 import PublicLayout from './pages/PublicLayout'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
+import GuestLayout from './pages/auth/GuestLayout'
 import Referral from './pages/Referral'
 import { MarketingPlan, PublicRewards, RankPlan } from './pages/PublicPages'
 import { Contact, Legal } from './pages/PublicForms'
 import MemberLayout from './pages/member/MemberLayout'
 import Dashboard from './pages/member/Dashboard'
-import Network from './pages/member/Network'
+import RankProgress from './pages/member/RankProgress'
+import Referrals from './pages/member/Referrals'
+import Team from './pages/member/Team'
+import TeamShow from './pages/member/TeamShow'
+import Transactions from './pages/member/Transactions'
 import Commissions from './pages/member/Commissions'
-import Wallet from './pages/member/Wallet'
-import Withdrawals from './pages/member/Withdrawals'
+import Salary from './pages/member/Salary'
 import Rewards from './pages/member/Rewards'
+import Wallet from './pages/member/Wallet'
+import Deposits from './pages/member/Deposits'
+import Withdrawals from './pages/member/Withdrawals'
+import Notifications from './pages/member/Notifications'
+import Verification from './pages/member/Verification'
+import Profile from './pages/member/Profile'
+import Security from './pages/member/Security'
 import AdminLayout from './pages/admin/AdminLayout'
 import Overview from './pages/admin/Overview'
 import Members from './pages/admin/Members'
@@ -59,8 +70,10 @@ function App() {
         <Route path="/r/:code" element={<Referral />} />
       </Route>
 
-      <Route path="/login" element={<PublicLayout><LoginPage /></PublicLayout>} />
-      <Route path="/register" element={<PublicLayout><RegisterPage /></PublicLayout>} />
+      <Route element={<GuestLayout />}>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+      </Route>
 
       <Route
         path="/member"
@@ -71,11 +84,21 @@ function App() {
         }
       >
         <Route index element={<Dashboard />} />
-        <Route path="network" element={<Network />} />
+        <Route path="rank-progress" element={<RankProgress />} />
+        <Route path="referrals" element={<Referrals />} />
+        <Route path="team" element={<Team />} />
+        <Route path="team/:id" element={<TeamShow />} />
+        <Route path="transactions" element={<Transactions />} />
         <Route path="commissions" element={<Commissions />} />
-        <Route path="wallet" element={<Wallet />} />
-        <Route path="withdrawals" element={<Withdrawals />} />
+        <Route path="salary" element={<Salary />} />
         <Route path="rewards" element={<Rewards />} />
+        <Route path="wallet" element={<Wallet />} />
+        <Route path="deposits" element={<Deposits />} />
+        <Route path="withdrawals" element={<Withdrawals />} />
+        <Route path="notifications" element={<Notifications />} />
+        <Route path="verification" element={<Verification />} />
+        <Route path="profile" element={<Profile />} />
+        <Route path="security" element={<Security />} />
       </Route>
 
       <Route

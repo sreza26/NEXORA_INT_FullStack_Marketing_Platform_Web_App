@@ -21,17 +21,17 @@ export default function Referral() {
 
   if (error) {
     return (
-      <div className="container" style={{ padding: '4rem 0', display: 'grid', gap: '1rem' }}>
-        <span className="badge">Referral</span>
-        <h1 style={{ fontSize: '2.2rem' }}>We could not verify that code</h1>
-        <p style={{ color: 'var(--text-muted)' }}>{error}. Taking you to the registration form…</p>
+      <div className="mx-auto max-w-3xl px-4 py-14 sm:px-6 lg:px-8">
+        <span className="badge badge-danger">Referral</span>
+        <h1 className="mt-3 page-title">We could not verify that code</h1>
+        <p className="section-sub">{error}. Taking you to the registration form…</p>
       </div>
     )
   }
 
   return (
-    <div className="container" style={{ padding: '4rem 0' }}>
-      <p>Applying your referral code…</p>
+    <div className="mx-auto max-w-3xl px-4 py-14 sm:px-6 lg:px-8">
+      <p className="text-slate-600">Applying your referral code…</p>
     </div>
   )
 }

@@ -16,6 +16,32 @@ const absoluteDb = process.env.DATABASE_FILE && path.isAbsolute(process.env.DATA
   ? process.env.DATABASE_FILE
   : path.join(serverRoot, 'database', process.env.DATABASE_FILE ?? 'nexora.sqlite')
 
+export interface GenerationRate {
+  generation_from: number;
+  generation_to: number;
+  rate: number;
+}
+
+export const DEFAULT_GENERATION_RATES: GenerationRate[] = [
+  { generation_from: 1, generation_to: 1, rate: 5 },
+  { generation_from: 2, generation_to: 2, rate: 3 },
+  { generation_from: 3, generation_to: 3, rate: 2 },
+  { generation_from: 4, generation_to: 5, rate: 1.5 },
+  { generation_from: 6, generation_to: 10, rate: 1 },
+  { generation_from: 11, generation_to: 20, rate: 0.5 },
+]
+
+function parseGenerationRates(raw: string | undefined): GenerationRate[] {
+  if (!raw) return DEFAULT_GENERATION_RATES
+  try {
+    const parsed = JSON.parse(raw) as GenerationRate[]
+    if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_GENERATION_RATES
+    return parsed
+  } catch {
+    return DEFAULT_GENERATION_RATES
+  }
+}
+
 export const config = {
   env: process.env.NODE_ENV ?? 'development',
   port: num(process.env.PORT, 5000),
@@ -38,6 +64,7 @@ export const config = {
       .split(',')
       .map((r) => Number(r.trim()))
       .filter((r) => Number.isFinite(r)),
+    generationRates: parseGenerationRates(process.env.COMMISSION_GENERATION_RATES),
   },
   withdrawal: {
     minAmount: num(process.env.WITHDRAWAL_MIN, 50),

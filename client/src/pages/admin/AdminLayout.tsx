@@ -1,17 +1,48 @@
 import { Outlet } from 'react-router-dom'
-import { Shell } from '../../components/Shell'
+import { Shell, type NavGroup } from '../../components/Shell'
+import { useAuth } from '../../lib/auth'
 
-const NAV = [
-  { to: '/admin', label: 'Overview' },
-  { to: '/admin/members', label: 'Members' },
-  { to: '/admin/withdrawals', label: 'Withdrawal approvals' },
-  { to: '/admin/rewards', label: 'Rewards' },
-  { to: '/admin/reports', label: 'Platform reports' },
+const NAV: NavGroup[] = [
+  {
+    heading: 'Overview',
+    items: [
+      { to: '/admin', label: 'Dashboard' },
+      { to: '/admin/members', label: 'Members' },
+    ],
+  },
+  {
+    heading: 'Money Movement',
+    items: [
+      { to: '/admin/withdrawals', label: 'Withdrawals' },
+    ],
+  },
+  {
+    heading: 'Compensation',
+    items: [
+      { to: '/admin/rewards', label: 'Travel Rewards' },
+    ],
+  },
+  {
+    heading: 'Governance',
+    items: [
+      { to: '/admin/reports', label: 'Reports' },
+    ],
+  },
 ]
 
 export default function AdminLayout() {
+  const { user } = useAuth()
+
   return (
-    <Shell items={NAV} title="Platform administration">
+    <Shell
+      groups={NAV}
+      title="Admin console"
+      variant="admin"
+      user={{
+        name: user?.name ?? 'Admin',
+        subtitle: user?.role ?? 'Staff',
+      }}
+    >
       <Outlet />
     </Shell>
   )

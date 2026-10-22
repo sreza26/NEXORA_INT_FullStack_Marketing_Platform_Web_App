@@ -29,30 +29,35 @@ export default function AdminWithdrawals() {
 
   return (
     <>
-      <div className="card" style={{ marginBottom: '1.5rem' }}>
-        <div className="card-body" style={{ gridTemplateColumns: 'auto 1fr', alignItems: 'end' }}>
-          <label className="label">
-            Status
-            <select className="input" value={filter} onChange={(e) => setFilter(e.target.value)}>
+      <div className="mt-6 card card-pad">
+        <div className="grid gap-4 sm:grid-cols-[auto_1fr] sm:items-end">
+          <div>
+            <label className="label" htmlFor="withdrawal-status">Status</label>
+            <select
+              className="input"
+              id="withdrawal-status"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            >
               <option value="pending">Pending</option>
               <option value="approved">Approved</option>
               <option value="rejected">Rejected</option>
               <option value="">All</option>
             </select>
-          </label>
+          </div>
         </div>
       </div>
 
-      {message && <p style={{ color: 'var(--warning)', marginBottom: '1rem' }}>{message}</p>}
+      {message && <p className="flash-ok mt-4">{message}</p>}
 
-      <div className="card">
-        <header className="card-header">
+      <div className="mt-6 card card-pad">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3>Withdrawal requests</h3>
-            <p style={{ color: 'var(--text-muted)' }}>Approve to release funds, reject to refund the member</p>
+            <h2 className="font-bold text-navy-900">Withdrawal requests</h2>
+            <p className="text-sm text-slate-500">Approve to release funds, reject to refund the member</p>
           </div>
-        </header>
-        <div className="card-body" style={{ padding: '0.5rem 0 0' }}>
+        </div>
+        <div className="table-wrap mt-4">
           <Table
             head={['ID', 'Member', 'Amount', 'Method', 'Status', 'Requested']}
             rows={items.map((w) => [
@@ -64,16 +69,16 @@ export default function AdminWithdrawals() {
               new Date(w.requested_at.replace(' ', 'T')).toLocaleDateString(),
             ])}
           />
-          <div style={{ display: 'grid', gap: '0.6rem', marginTop: '1rem' }}>
-            {items
-              .filter((w) => w.status === 'pending')
-              .map((w) => (
-                <div key={w.id} style={{ display: 'flex', gap: '0.6rem' }}>
-                  <button className="btn btn-primary" onClick={() => resolve(w.id, 'approve')}>Approve #{w.id}</button>
-                  <button className="btn btn-ghost" onClick={() => resolve(w.id, 'reject')}>Reject #{w.id}</button>
-                </div>
-              ))}
-          </div>
+        </div>
+        <div className="mt-4 grid gap-2">
+          {items
+            .filter((w) => w.status === 'pending')
+            .map((w) => (
+              <div key={w.id} className="flex flex-wrap gap-2">
+                <button className="btn btn-primary btn-sm" onClick={() => resolve(w.id, 'approve')}>Approve #{w.id}</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => resolve(w.id, 'reject')}>Reject #{w.id}</button>
+              </div>
+            ))}
         </div>
       </div>
     </>

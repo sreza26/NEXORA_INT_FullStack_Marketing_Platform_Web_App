@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500" role="img" aria-label="Himalayan peaks at dawn">
+  <defs>
+    <linearGradient id="nepal-sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e3a8a"/>
+      <stop offset="0.55" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#fde68a"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="500" fill="url(#nepal-sky)"/>
+  <circle cx="620" cy="200" r="46" fill="#fffbeb" opacity="0.95"/>
+  <polygon points="0,500 0,340 130,190 250,310 380,160 520,330 650,220 800,350 800,500" fill="#334155" opacity="0.6"/>
+  <polygon points="0,500 0,390 120,265 250,370 370,235 510,375 630,290 780,400 800,380 800,500" fill="#475569"/>
+  <polygon points="370,235 344,268 362,258 376,276 396,252 412,270 430,266" fill="#f8fafc"/>
+  <polygon points="120,265 96,298 114,288 128,306 148,282 164,300 180,296" fill="#f1f5f9"/>
+  <polygon points="630,290 610,318 626,310 638,326 656,304 670,320 684,318" fill="#f1f5f9"/>
+  <polygon points="0,500 0,445 190,365 350,440 520,375 690,445 800,415 800,500" fill="#1e293b"/>
+</svg>

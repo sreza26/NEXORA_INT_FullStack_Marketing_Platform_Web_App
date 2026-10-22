@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500" role="img" aria-label="European city skyline with landmarks">
+  <defs>
+    <linearGradient id="eu-sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0ea5e9"/>
+      <stop offset="0.7" stop-color="#bae6fd"/>
+      <stop offset="1" stop-color="#eff6ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="500" fill="url(#eu-sky)"/>
+  <g fill="#ffffff" opacity="0.85">
+    <ellipse cx="170" cy="110" rx="70" ry="24"/>
+    <ellipse cx="230" cy="98" rx="46" ry="20"/>
+    <ellipse cx="600" cy="150" rx="64" ry="22"/>
+    <ellipse cx="655" cy="140" rx="42" ry="18"/>
+  </g>
+  <g fill="#334155">
+    <rect x="0" y="420" width="90" height="80"/>
+    <rect x="96" y="390" width="70" height="110"/>
+    <polygon points="96,390 131,356 166,390"/>
+    <rect x="176" y="415" width="60" height="85"/>
+    <rect x="560" y="400" width="76" height="100"/>
+    <rect x="646" y="425" width="60" height="75"/>
+    <rect x="716" y="395" width="84" height="105"/>
+    <polygon points="716,395 758,362 800,395"/>
+    <rect x="470" y="435" width="70" height="65"/>
+  </g>
+  <g fill="#1e293b">
+    <polygon points="360,160 372,160 380,300 392,470 348,470 360,300"/>
+    <rect x="336" y="462" width="68" height="10"/>
+    <path d="M352,300 L368,262 L372,262 L388,300 Z" opacity="0"/>
+    <path d="M344,340 L416,340 M352,300 L408,300 M358,250 L402,250" stroke="#1e293b" stroke-width="7" fill="none"/>
+    <rect x="278" y="380" width="72" height="90"/>
+    <path d="M278,380 a36,36 0 0 1 72,0 Z"/>
+    <rect x="308" y="342" width="12" height="40"/>
+    <polygon points="314,318 322,344 306,344"/>
+    <rect x="416" y="400" width="44" height="70"/>
+    <path d="M416,400 L438,372 L460,400 Z"/>
+    <rect x="432" y="356" width="8" height="24"/>
+  </g>
+</svg>

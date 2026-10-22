@@ -8,6 +8,21 @@ export function listRewards(onlyActive = true) {
   return db.prepare(sql).all() as any[]
 }
 
+export function listTravelRewards(onlyActive = true) {
+  const sql = onlyActive
+    ? 'SELECT * FROM rewards WHERE active = 1 ORDER BY id ASC'
+    : 'SELECT * FROM rewards ORDER BY id ASC'
+  return (db.prepare(sql).all() as any[]).map((reward) => ({
+    id: reward.id,
+    name: reward.title,
+    description: reward.description,
+    threshold_amount: reward.cost,
+    image: reward.image_path,
+    image_url: reward.image_path,
+    is_active: Boolean(reward.active),
+  }))
+}
+
 export function findReward(id: number) {
   return db.prepare('SELECT * FROM rewards WHERE id = ?').get(id) as any | undefined
 }

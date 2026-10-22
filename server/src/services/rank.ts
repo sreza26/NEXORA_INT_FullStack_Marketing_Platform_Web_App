@@ -7,6 +7,30 @@ export function listRanks() {
   return db.prepare('SELECT * FROM ranks ORDER BY level ASC').all() as any[]
 }
 
+export function listRanksWithRequirements() {
+  const ranks = listRanks()
+  const requirementRows = db
+    .prepare('SELECT * FROM rank_requirements ORDER BY rank_id ASC, sort_order ASC')
+    .all() as any[]
+
+  return ranks.map((rank) => ({
+    id: rank.id,
+    code: rank.code,
+    name: rank.name,
+    level: rank.level,
+    monthly_salary: rank.salary,
+    requirements: requirementRows
+      .filter((requirement) => requirement.rank_id === rank.id)
+      .map((requirement) => ({
+        type: requirement.type,
+        value: requirement.value,
+        label: requirement.label ?? requirement.type,
+        target_rank_code: requirement.target_rank_code,
+        sort_order: requirement.sort_order,
+      })),
+  }))
+}
+
 export function findRank(id: number) {
   return db.prepare('SELECT * FROM ranks WHERE id = ?').get(id) as any | undefined
 }

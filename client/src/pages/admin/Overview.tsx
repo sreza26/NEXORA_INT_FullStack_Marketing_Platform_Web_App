@@ -15,11 +15,11 @@ export default function Overview() {
       .catch(() => setStats(null))
   }, [])
 
-  if (!stats) return <p>Loading…</p>
+  if (!stats) return <p className="text-sm text-slate-400">Loading…</p>
 
   return (
     <>
-      <div className="grid grid-3" style={{ marginBottom: '2rem' }}>
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <Stat label="Total members" value={stats.total_members} />
         <Stat label="Active members" value={stats.active_members} />
         <Stat label="Verified members" value={stats.verified_members} />
@@ -28,14 +28,14 @@ export default function Overview() {
         <Stat label="Paid commissions" value={money(stats.paid_commission_total)} />
       </div>
 
-      <div className="card">
-        <header className="card-header">
+      <div className="mt-6 card card-pad">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3>Pending withdrawal requests</h3>
-            <p style={{ color: 'var(--text-muted)' }}>Awaiting finance review</p>
+            <h2 className="font-bold text-navy-900">Pending withdrawal requests</h2>
+            <p className="text-sm text-slate-500">Awaiting finance review</p>
           </div>
-        </header>
-        <div className="card-body" style={{ padding: '0.5rem 0 0' }}>
+        </div>
+        <div className="table-wrap mt-4">
           <Table
             head={['Member', 'Amount', 'Method', 'Requested']}
             rows={pending.map((w) => [

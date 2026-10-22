@@ -1,18 +1,38 @@
 import { Outlet } from 'react-router-dom'
-import { Shell } from '../../components/Shell'
+import { Shell, type NavGroup } from '../../components/Shell'
+import { useAuth } from '../../lib/auth'
 
-const NAV = [
-  { to: '/member', label: 'Dashboard' },
-  { to: '/member/network', label: 'My network' },
-  { to: '/member/commissions', label: 'Commissions' },
-  { to: '/member/wallet', label: 'Wallet & ledger' },
-  { to: '/member/withdrawals', label: 'Withdrawals' },
-  { to: '/member/rewards', label: 'Rewards & rank' },
+const NAV: NavGroup[] = [
+  {
+    heading: 'Overview',
+    items: [
+      { to: '/member', label: 'Dashboard' },
+      { to: '/member/network', label: 'My Network' },
+    ],
+  },
+  {
+    heading: 'Earnings',
+    items: [
+      { to: '/member/commissions', label: 'Commissions' },
+      { to: '/member/wallet', label: 'Wallet & Ledger' },
+      { to: '/member/withdrawals', label: 'Withdrawals' },
+      { to: '/member/rewards', label: 'Rewards' },
+    ],
+  },
 ]
 
 export default function MemberLayout() {
+  const { user } = useAuth()
+
   return (
-    <Shell items={NAV} title="Member portal">
+    <Shell
+      groups={NAV}
+      title="Member portal"
+      user={{
+        name: user?.name ?? 'Member',
+        subtitle: user?.member_code ?? '',
+      }}
+    >
       <Outlet />
     </Shell>
   )

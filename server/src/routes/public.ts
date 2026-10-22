@@ -2,21 +2,30 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { config } from '../config/index.js'
 import { findUserByCode } from '../models/user.js'
-import { listRanks } from '../services/rank.js'
-import { listRewards } from '../services/reward.js'
+import { listRanksWithRequirements } from '../services/rank.js'
+import { listTravelRewards } from '../services/reward.js'
 import { db } from '../db/index.js'
 
 const router = Router()
 
 router.get('/config', (_req, res) => {
+  const plan = db
+    .prepare('SELECT id, version, status FROM compensation_plans WHERE is_active = 1 ORDER BY version DESC LIMIT 1')
+    .get() as { id: number; version: number; status: string } | undefined
+
   res.json({
     app_name: 'NEXORA',
     currency: config.currency,
-    commission: { generation: config.commission.generation, rates: config.commission.rates },
+    commission: {
+      generation: config.commission.generation,
+      rates: config.commission.rates,
+      generation_rates: config.commission.generationRates,
+    },
+    plan: plan ?? null,
     withdrawal: { min: config.withdrawal.minAmount, max: config.withdrawal.maxAmount, hold_days: config.withdrawal.holdDays },
     registration: { sponsor_required: config.registration.sponsorRequired },
-    ranks: listRanks(),
-    rewards: listRewards(true),
+    ranks: listRanksWithRequirements(),
+    rewards: listTravelRewards(true),
   })
 })
 

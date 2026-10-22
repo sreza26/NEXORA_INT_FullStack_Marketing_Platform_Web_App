@@ -42,43 +42,64 @@ export default function AdminRewards() {
     }
   }
 
-  if (!data) return <p>Loading…</p>
+  if (!data) return <p className="text-sm text-slate-400">Loading…</p>
 
   return (
     <>
-      <form className="card" style={{ marginBottom: '2rem' }} onSubmit={create}>
-        <header className="card-header">
+      <form onSubmit={create} className="mt-6 card card-pad space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3>Create reward</h3>
-            <p style={{ color: 'var(--text-muted)' }}>Members claim rewards with their wallet balance</p>
+            <h2 className="font-bold text-navy-900">Create reward</h2>
+            <p className="text-sm text-slate-500">Members claim rewards with their wallet balance</p>
           </div>
-        </header>
-        <div className="card-body">
-          <label className="label">
-            Title
-            <input className="input" required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-          </label>
-          <label className="label">
-            Description
-            <input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          </label>
-          <label className="label">
-            Cost
-            <input className="input" type="number" min="0" step="0.01" value={form.cost}
-              onChange={(e) => setForm({ ...form, cost: e.target.value })} />
-          </label>
-          {message && <p style={{ color: 'var(--warning)' }}>{message}</p>}
-          <button className="btn btn-primary" type="submit">Create reward</button>
         </div>
+
+        <div>
+          <label className="label" htmlFor="reward-title">Title</label>
+          <input
+            className="input"
+            id="reward-title"
+            required
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+          />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="reward-description">Description</label>
+          <input
+            className="input"
+            id="reward-description"
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+          />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="reward-cost">Cost</label>
+          <input
+            className="input"
+            id="reward-cost"
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.cost}
+            onChange={(e) => setForm({ ...form, cost: e.target.value })}
+          />
+        </div>
+
+        {message && <p className="flash-ok">{message}</p>}
+
+        <button className="btn btn-primary" type="submit">Create reward</button>
       </form>
 
-      <div className="card" style={{ marginBottom: '2rem' }}>
-        <header className="card-header">
+      <div className="mt-6 card card-pad">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3>Reward catalogue</h3>
+            <h2 className="font-bold text-navy-900">Reward catalogue</h2>
           </div>
-        </header>
-        <div className="card-body" style={{ padding: '0.5rem 0 0' }}>
+        </div>
+        <div className="table-wrap mt-4">
           <Table
             head={['ID', 'Title', 'Cost', 'Active']}
             rows={data.rewards.map((r: any) => [r.id, r.title, money(r.cost), r.active ? 'yes' : 'no'])}
@@ -86,27 +107,27 @@ export default function AdminRewards() {
         </div>
       </div>
 
-      <div className="card">
-        <header className="card-header">
+      <div className="mt-6 card card-pad">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3>Reward claims</h3>
+            <h2 className="font-bold text-navy-900">Reward claims</h2>
           </div>
-        </header>
-        <div className="card-body" style={{ padding: '0.5rem 0 0' }}>
+        </div>
+        <div className="table-wrap mt-4">
           <Table
             head={['ID', 'Member', 'Reward', 'Cost', 'Status']}
             rows={data.claims.map((c: any) => [c.id, c.member_name, c.title, money(c.cost), c.status])}
           />
-          <div style={{ display: 'grid', gap: '0.6rem', marginTop: '1rem' }}>
-            {data.claims
-              .filter((c: any) => c.status === 'pending')
-              .map((c: any) => (
-                <div key={c.id} style={{ display: 'flex', gap: '0.6rem' }}>
-                  <button className="btn btn-primary" onClick={() => resolveClaim(c.id, 'approve')}>Approve #{c.id}</button>
-                  <button className="btn btn-ghost" onClick={() => resolveClaim(c.id, 'reject')}>Reject #{c.id}</button>
-                </div>
-              ))}
-          </div>
+        </div>
+        <div className="mt-4 grid gap-2">
+          {data.claims
+            .filter((c: any) => c.status === 'pending')
+            .map((c: any) => (
+              <div key={c.id} className="flex flex-wrap gap-2">
+                <button className="btn btn-primary btn-sm" onClick={() => resolveClaim(c.id, 'approve')}>Approve #{c.id}</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => resolveClaim(c.id, 'reject')}>Reject #{c.id}</button>
+              </div>
+            ))}
         </div>
       </div>
     </>
