@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs'
 import { db } from '../db/index.js'
 import { config } from '../config/index.js'
 import { linkReferralClosures } from '../services/closure.js'
+import { loadUserPermissions } from './permissions.js'
 
 export interface UserRow {
   id: number
@@ -21,6 +22,7 @@ export interface UserRow {
 
 export interface UserWithRoles extends UserRow {
   roles: string[]
+  permissions: string[]
 }
 
 export function generateMemberCode(): string {
@@ -36,7 +38,7 @@ export function generateMemberCode(): string {
 }
 
 export function hashPassword(plain: string): string {
-  return bcrypt.hashSync(plain, 10)
+  return bcrypt.hashSync(plain, config.bcryptRounds)
 }
 
 export function verifyPassword(plain: string, hash: string): boolean {
@@ -62,7 +64,8 @@ export function withRoles(row: UserRow): UserWithRoles {
   const roles = db
     .prepare('SELECT r.name FROM roles r JOIN user_roles ur ON ur.role_id = r.id WHERE ur.user_id = ?')
     .all(row.id) as { name: string }[]
-  return { ...row, roles: roles.map((r) => r.name) }
+  const roleNames = roles.map((r) => r.name)
+  return { ...row, roles: roleNames, permissions: loadUserPermissions(row.id, roleNames) }
 }
 
 export function createUser(input: {

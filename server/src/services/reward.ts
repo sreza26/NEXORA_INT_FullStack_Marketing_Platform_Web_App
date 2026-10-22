@@ -1,5 +1,6 @@
 import { db } from '../db/index.js'
 import { postLedger, reverseLedger, walletBalance } from '../models/ledger.js'
+import { BusinessRuleError } from '../utils/errors.js'
 
 export function listRewards(onlyActive = true) {
   const sql = onlyActive
@@ -41,11 +42,11 @@ export function createReward(input: {
 
 export function claimReward(memberId: number, rewardId: number) {
   const reward = findReward(rewardId)
-  if (!reward) throw new Error('Reward not found')
-  if (!reward.active) throw new Error('Reward is not available')
+  if (!reward) throw new BusinessRuleError('Reward not found')
+  if (!reward.active) throw new BusinessRuleError('Reward is not available')
 
   const balance = walletBalance(memberId)
-  if (balance < reward.cost) throw new Error('Insufficient wallet balance to claim this reward')
+  if (balance < reward.cost) throw new BusinessRuleError('Insufficient wallet balance to claim this reward')
 
   const info = db
     .prepare('INSERT INTO reward_claims (member_id, reward_id, cost, status) VALUES (?, ?, ?, ?)')
@@ -89,8 +90,8 @@ export function listClaims(memberId?: number) {
 
 export function resolveClaim(claimId: number, adminId: number, approve: boolean) {
   const claim = db.prepare('SELECT * FROM reward_claims WHERE id = ?').get(claimId) as any | undefined
-  if (!claim) throw new Error('Reward claim not found')
-  if (claim.status !== 'pending') throw new Error('Reward claim is not pending')
+  if (!claim) throw new BusinessRuleError('Reward claim not found')
+  if (claim.status !== 'pending') throw new BusinessRuleError('Reward claim is not pending')
 
   if (approve) {
     db.prepare(

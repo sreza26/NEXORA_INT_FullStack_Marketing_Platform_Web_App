@@ -69,132 +69,158 @@ import {
   network,
 } from '../controllers/admin.js'
 import { authenticate, requireRole } from '../middlewares/auth.js'
+import { requirePermission, requireResolvedPermission } from '../middlewares/permissions.js'
+import { clientIp, rateLimit } from '../middlewares/rateLimit.js'
+import { config } from '../config/index.js'
 
 const router = Router()
 
 router.use(authenticate)
 router.use(requireRole('super_admin', 'finance_admin', 'compliance_officer', 'support_agent'))
 
+// Laravel throttle:sensitive -> 10 requests per minute, keyed by user and IP.
+// The Laravel "sensitive" throttle is one named limiter shared by the member
+// and admin routes; the key carries the user id so the buckets never clash.
+const sensitive = rateLimit({
+  scope: 'sensitive',
+  windowMs: config.rateLimit.sensitive.windowMs,
+  max: config.rateLimit.sensitive.max,
+  key: (req) => `${req.user?.id ?? 'guest'}|${clientIp(req)}`,
+})
+
+/**
+ * The permission attached to each admin route mirrors the
+ * `permission:...` middleware of the Laravel reference routes.
+ */
+
 // Dashboard / summary
 router.get('/summary', summary)
-router.get('/report', reportLegacy)
+router.get('/report', requirePermission('reports.export'), reportLegacy)
 
 // Network
-router.get('/network', network)
+router.get('/network', requirePermission('members.view'), network)
 
 // Members
-router.get('/members', members)
-router.get('/members/:id', memberShow)
-router.put('/members/:id', updateMember)
-router.patch('/members/:id', updateMember)
-router.delete('/members/:id', deleteMember)
-router.post('/members/:id/verify', memberVerify)
-router.post('/members/:id/suspend', memberSuspend)
-router.post('/members/:id/activate', memberActivate)
-router.post('/members/:id/sponsor', memberSponsor)
+router.get('/members', requirePermission('members.view'), members)
+router.get('/members/:id', requirePermission('members.view'), memberShow)
+router.put('/members/:id', requirePermission('members.manage'), updateMember)
+router.patch('/members/:id', requirePermission('members.manage'), updateMember)
+router.delete('/members/:id', requirePermission('members.manage'), deleteMember)
+router.post('/members/:id/verify', sensitive, requirePermission('members.verify_identity'), memberVerify)
+router.post('/members/:id/suspend', sensitive, requirePermission('members.suspend'), memberSuspend)
+router.post('/members/:id/activate', sensitive, requirePermission('members.suspend'), memberActivate)
+router.post('/members/:id/sponsor', sensitive, requirePermission('members.change_sponsor'), memberSponsor)
 
 // Verifications
-router.get('/verifications', verifications)
+router.get('/verifications', requirePermission('members.verify_identity'), verifications)
 
 // Roles
-router.get('/roles', roles)
-router.post('/roles/:user/assign', requireRole('super_admin'), assignRole)
+router.get('/roles', requirePermission('roles.manage'), roles)
+router.post('/roles/:user/assign', sensitive, requirePermission('roles.manage'), requireRole('super_admin'), assignRole)
 
 // Transactions
-router.get('/transactions', transactions)
-router.post('/transactions', storeTransaction)
-router.post('/transactions/:id/verify', verifyTransaction)
-router.post('/transactions/:id/reject', rejectTransaction)
-router.post('/transactions/:id/reverse', reverseTransaction)
+router.get('/transactions', requirePermission('transactions.view'), transactions)
+router.post('/transactions', sensitive, requirePermission('transactions.create'), storeTransaction)
+router.post('/transactions/:id/verify', sensitive, requirePermission('transactions.verify'), verifyTransaction)
+router.post('/transactions/:id/reject', sensitive, requirePermission('transactions.verify'), rejectTransaction)
+router.post('/transactions/:id/reverse', sensitive, requirePermission('transactions.reverse'), reverseTransaction)
 
 // Ledger
-router.get('/ledger', ledger)
+router.get('/ledger', requirePermission('ledger.view'), ledger)
 
 // Deposits
-router.get('/deposits', deposits)
-router.post('/deposits/:id/verify', verifyDeposit)
-router.post('/deposits/:id/reject', rejectDeposit)
+router.get('/deposits', requirePermission('deposits.view'), deposits)
+router.post('/deposits/:id/verify', sensitive, requirePermission('deposits.verify'), verifyDeposit)
+router.post('/deposits/:id/reject', sensitive, requirePermission('deposits.verify'), rejectDeposit)
 
 // Withdrawals
-router.get('/withdrawals', withdrawals)
-router.post('/withdrawals/:id', resolveWithdrawal)
+router.get('/withdrawals', requirePermission('withdrawals.view'), withdrawals)
+router.post(
+  '/withdrawals/:id',
+  sensitive,
+  requireResolvedPermission((req) => {
+    const action = String((req.body as { action?: string } | undefined)?.action ?? '').toLowerCase()
+    if (action === 'pay') return 'withdrawals.pay'
+    if (action === 'approve' || action === 'reject') return 'withdrawals.approve'
+    return null
+  }),
+  resolveWithdrawal,
+)
+router.post('/withdrawals/:id/resolve', sensitive, requirePermission('withdrawals.approve'), approveWithdrawalLegacy)
 
 // Reconciliation
-router.get('/reconciliation', reconciliation)
-router.post('/reconciliation/run', runReconciliation)
+router.get('/reconciliation', requirePermission('reconciliation.view'), reconciliation)
+router.post('/reconciliation/run', sensitive, requirePermission('reconciliation.run'), runReconciliation)
 
 // Compensation plans
-router.get('/compensation-plans', plans)
-router.get('/plans', plans)
-router.post('/compensation-plans', storePlan)
-router.post('/plans', storePlan)
-router.post('/compensation-plans/:id/activate', activatePlan)
-router.post('/plans/:id/activate', activatePlan)
-router.get('/compensation-plans/:id/preview', planPreview)
-router.get('/plans/:id/preview', planPreview)
+router.get('/compensation-plans', requirePermission('plans.manage'), plans)
+router.get('/plans', requirePermission('plans.manage'), plans)
+router.post('/compensation-plans', sensitive, requirePermission('plans.manage'), storePlan)
+router.post('/plans', sensitive, requirePermission('plans.manage'), storePlan)
+router.post('/compensation-plans/:id/activate', sensitive, requirePermission('plans.approve'), activatePlan)
+router.post('/plans/:id/activate', sensitive, requirePermission('plans.approve'), activatePlan)
+router.get('/compensation-plans/:id/preview', requirePermission('plans.manage'), planPreview)
+router.get('/plans/:id/preview', requirePermission('plans.manage'), planPreview)
 
 // Commissions
-router.get('/commissions', commissions)
-router.get('/commissions/preview', commissionPreview)
-router.get('/commissions/exceptions', commissionExceptions)
-router.post('/commissions/:id/approve', approveCommission)
-router.post('/commissions/:id/reject', rejectCommission)
-router.post('/commissions/:id/pay', payCommission)
+router.get('/commissions', requirePermission('commissions.view'), commissions)
+router.get('/commissions/preview', requirePermission('commissions.view'), commissionPreview)
+router.get('/commissions/exceptions', requirePermission('commissions.view'), commissionExceptions)
+router.post('/commissions/:id/approve', sensitive, requirePermission('commissions.approve'), approveCommission)
+router.post('/commissions/:id/reject', sensitive, requirePermission('commissions.approve'), rejectCommission)
+router.post('/commissions/:id/pay', sensitive, requirePermission('commissions.pay'), payCommission)
 
 // Ranks
-router.get('/ranks', ranks)
-router.post('/ranks', requireRole('super_admin'), storeRank)
-router.put('/ranks/:id', updateRank)
-router.post('/ranks/:id', updateRank)
-router.post('/ranks/recalculate', recalculateRanks)
+router.get('/ranks', requirePermission('ranks.manage'), ranks)
+router.post('/ranks', sensitive, requirePermission('ranks.manage'), storeRank)
+router.post('/ranks/recalculate', sensitive, requirePermission('ranks.manage'), recalculateRanks)
+router.post('/ranks/recalculate-legacy', sensitive, requirePermission('ranks.manage'), recalculateRanksLegacy)
+router.put('/ranks/:id', sensitive, requirePermission('ranks.manage'), updateRank)
+router.post('/ranks/:id', sensitive, requirePermission('ranks.manage'), updateRank)
 
 // Rank reports
-router.get('/rank-reports', rankReports)
-router.post('/rank-reports/recalculate', recalculateRankReports)
+router.get('/rank-reports', requirePermission('ranks.view'), rankReports)
+router.post('/rank-reports/recalculate', sensitive, requirePermission('ranks.manage'), recalculateRankReports)
 
 // Salary
-router.get('/salary', salary)
-router.post('/salary/generate', requireRole('super_admin', 'finance_admin'), generateSalary)
-router.post('/salary/run', requireRole('super_admin', 'finance_admin'), runSalaryLegacy)
-router.post('/salary/:id/approve', approveSalary)
-router.post('/salary/:id/reject', rejectSalary)
-router.post('/salary/:id/pay', paySalary)
+router.get('/salary', requirePermission('salary.view'), salary)
+router.post('/salary/generate', sensitive, requirePermission('salary.approve'), generateSalary)
+router.post('/salary/run', sensitive, requirePermission('salary.approve'), runSalaryLegacy)
+router.post('/salary/:id/approve', sensitive, requirePermission('salary.approve'), approveSalary)
+router.post('/salary/:id/reject', sensitive, requirePermission('salary.approve'), rejectSalary)
+router.post('/salary/:id/pay', sensitive, requirePermission('salary.pay'), paySalary)
 
 // Rewards
-router.get('/rewards', rewards)
-router.post('/rewards', storeReward)
-router.put('/rewards/:id', updateReward)
+router.get('/rewards', requirePermission('rewards.manage'), rewards)
+router.post('/rewards', sensitive, requirePermission('rewards.manage'), storeReward)
+router.put('/rewards/:id', sensitive, requirePermission('rewards.manage'), updateReward)
 
 // Reward claims
-router.get('/reward-claims', rewardClaims)
-router.post('/reward-claims/:id/approve', resolveRewardClaim)
-router.post('/reward-claims/:id/reject', resolveRewardClaim)
+router.get('/reward-claims', requirePermission('rewards.claims.review'), rewardClaims)
+router.post('/reward-claims/:id/approve', sensitive, requirePermission('rewards.claims.review'), resolveRewardClaim)
+router.post('/reward-claims/:id/reject', sensitive, requirePermission('rewards.claims.review'), resolveRewardClaim)
 
 // Announcements
-router.get('/announcements', announcements)
-router.post('/announcements', storeAnnouncement)
-router.post('/announcements/:id/publish', publishAnnouncement)
+router.get('/announcements', requirePermission('announcements.manage'), announcements)
+router.post('/announcements', sensitive, requirePermission('announcements.manage'), storeAnnouncement)
+router.post('/announcements/:id/publish', sensitive, requirePermission('announcements.manage'), publishAnnouncement)
 
 // Audit logs
-router.get('/audit-logs', auditLogs)
+router.get('/audit-logs', requirePermission('audit.view'), auditLogs)
 
 // Jobs
-router.get('/jobs', jobs)
+router.get('/jobs', requirePermission('jobs.view'), jobs)
 
 // Settings
-router.get('/settings', settings)
-router.put('/settings', updateSettings)
+router.get('/settings', requirePermission('settings.manage'), settings)
+router.put('/settings', sensitive, requirePermission('settings.manage'), updateSettings)
 
 // Legacy / other routes
-router.get('/ranks-legacy', ranksLegacy)
-router.post('/ranks/recalculate-legacy', recalculateRanksLegacy)
-router.post('/purchases', recordPurchase)
+router.get('/ranks-legacy', requirePermission('ranks.manage'), ranksLegacy)
+router.post('/purchases', sensitive, requirePermission('transactions.create'), recordPurchase)
 
 // Reports (export)
-router.get('/reports', report)
-router.get('/reports/export', report)
-
-// Keep compatibility
-router.post('/withdrawals/:id/resolve', approveWithdrawalLegacy)
+router.get('/reports', requirePermission('reports.view'), report)
+router.get('/reports/export', requirePermission('reports.export'), report)
 
 export default router

@@ -9,6 +9,8 @@ export default function Verification() {
   const [profile, setProfile] = useState<any>(null)
   const [form, setForm] = useState({ full_name: '', nid_number: '', country: '' })
   const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const [files, setFiles] = useState<{ nid: File | null; selfie: File | null }>({ nid: null, selfie: null })
 
   async function load() {
     try {
@@ -33,12 +35,31 @@ export default function Verification() {
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setMessage('')
+    setError('')
+
+    if (!files.nid) {
+      setError('Please attach your NID or passport document.')
+      return
+    }
+    if (!files.selfie) {
+      setError('Please attach a selfie photo.')
+      return
+    }
+
+    const payload = new FormData()
+    payload.append('full_name', form.full_name)
+    payload.append('nid_number', form.nid_number)
+    payload.append('country', form.country)
+    payload.append('nid_document', files.nid)
+    payload.append('selfie_document', files.selfie)
+
     try {
-      await api.post('/member/verification', form)
+      await api.post('/member/verification', payload)
       setMessage('Documents submitted. A compliance officer will review them shortly.')
+      setFiles({ nid: null, selfie: null })
       await load()
-    } catch {
-      // ignore
+    } catch (err: any) {
+      setError(err?.response?.data?.message ?? 'We could not upload your documents. Please try again.')
     }
   }
 
@@ -90,17 +111,30 @@ export default function Verification() {
 
             <div>
               <label className="label" htmlFor="nid_document">NID / Passport document</label>
-              <input className="input" type="file" id="nid_document" accept=".jpg,.jpeg,.png,.pdf" />
+              <input
+                className="input"
+                type="file"
+                id="nid_document"
+                accept=".jpg,.jpeg,.png,.pdf"
+                onChange={(e) => setFiles((prev) => ({ ...prev, nid: e.target.files?.[0] ?? null }))}
+              />
               <p className="mt-1 text-[11px] text-slate-400">JPG, PNG or PDF up to 4 MB.</p>
             </div>
 
             <div>
               <label className="label" htmlFor="selfie_document">Selfie photo</label>
-              <input className="input" type="file" id="selfie_document" accept=".jpg,.jpeg,.png" />
+              <input
+                className="input"
+                type="file"
+                id="selfie_document"
+                accept=".jpg,.jpeg,.png"
+                onChange={(e) => setFiles((prev) => ({ ...prev, selfie: e.target.files?.[0] ?? null }))}
+              />
               <p className="mt-1 text-[11px] text-slate-400">Clear photo of yourself holding your ID (optional text on ID).</p>
             </div>
 
             {message && <p className="flash-ok">{message}</p>}
+            {error && <p className="flash-err">{error}</p>}
             <button type="submit" className="btn btn-accent w-full">Submit for review</button>
           </form>
         )}

@@ -1,6 +1,7 @@
 import { db } from '../db/index.js'
 import { config, type GenerationRate } from '../config/index.js'
 import { postLedger, reverseLedger } from '../models/ledger.js'
+import { decryptSecret } from '../utils/crypto.js'
 import { generateCommissions } from './commission.js'
 import { directReferrals, downlineByGeneration } from './tree.js'
 import { rebuildAllReferralClosures } from './closure.js'
@@ -260,7 +261,7 @@ export function memberDetail(id: number) {
   ).map((r) => r.name)
 
   const sponsor = member.sponsor_id
-    ? (db.prepare('SELECT id, name, member_code FROM users WHERE id = ?').get(member.sponsor_id) as unknown as Record<string, unknown>)
+    ? (db.prepare('SELECT id, name, member_code FROM users WHERE id = ?').get(Number(member.sponsor_id)) as unknown as Record<string, unknown>)
     : null
 
   const direct = db
@@ -406,7 +407,8 @@ export function pendingVerifications() {
 export function rolesOverview(search = '') {
   const roles = db
     .prepare(
-      `SELECT r.id, r.name, (SELECT COUNT(*) FROM role_permissions rp WHERE rp.role_id = r.id) AS permissions_count
+      `SELECT r.id, r.name, r.label, r.description,
+              (SELECT COUNT(*) FROM permission_role pr WHERE pr.role_id = r.id) AS permissions_count
        FROM roles r ORDER BY r.name`,
     )
     .all() as unknown as Array<Record<string, unknown>>
@@ -645,7 +647,10 @@ export function withdrawalsList(status?: string) {
     )
     .all(...(params as never[])) as unknown as Array<Record<string, unknown>>
 
-  return rows
+  return rows.map((row) => ({
+    ...row,
+    account_details: decryptSecret(typeof row.account_details === 'string' ? row.account_details : null),
+  }))
 }
 
 export function approveWithdrawalRequest(id: number, adminId: number, note?: string | null) {
@@ -657,8 +662,9 @@ export function approveWithdrawalRequest(id: number, adminId: number, note?: str
 
   db.prepare(
     `UPDATE withdrawal_requests SET status = 'approved', processed_at = datetime('now'), processed_by = ?,
+       reviewed_by = ?, reviewed_at = datetime('now'), updated_at = datetime('now'),
        notes = COALESCE(?, notes), review_note = COALESCE(?, review_note) WHERE id = ?`,
-  ).run(adminId, note ?? null, note ?? null, id)
+  ).run(adminId, adminId, note ?? null, note ?? null, id)
   db.prepare(`UPDATE ledger_entries SET status = 'approved' WHERE reference_type = 'withdrawal_request' AND reference_id = ?`).run(id)
   return { id, status: 'approved' }
 }
@@ -673,8 +679,9 @@ export function rejectWithdrawalRequest(id: number, adminId: number, reason?: st
   reverseLedger('withdrawal_request', id, `Withdrawal request #${id} rejected`)
   db.prepare(
     `UPDATE withdrawal_requests SET status = 'rejected', processed_at = datetime('now'), processed_by = ?,
+       reviewed_by = ?, reviewed_at = datetime('now'), updated_at = datetime('now'),
        notes = COALESCE(?, notes), review_note = COALESCE(?, review_note) WHERE id = ?`,
-  ).run(adminId, reason ?? null, reason ?? null, id)
+  ).run(adminId, adminId, reason ?? null, reason ?? null, id)
   return { id, status: 'rejected' }
 }
 
@@ -686,8 +693,9 @@ export function payWithdrawalRequest(id: number, adminId: number) {
   if (request.status !== 'approved') return null
 
   db.prepare(
-    `UPDATE withdrawal_requests SET status = 'paid', paid_at = datetime('now'), processed_at = datetime('now'), processed_by = ? WHERE id = ?`,
-  ).run(adminId, id)
+    `UPDATE withdrawal_requests SET status = 'paid', paid_at = datetime('now'), processed_at = datetime('now'), processed_by = ?,
+       paid_by = ?, updated_at = datetime('now') WHERE id = ?`,
+  ).run(adminId, adminId, id)
   return { id, status: 'paid' }
 }
 
@@ -757,8 +765,14 @@ export function listPlans() {
     eligible_transaction_types: plan.eligible_transaction_types
       ? String(plan.eligible_transaction_types).split(',').filter(Boolean)
       : [],
-    created_by_name: (db.prepare('SELECT name FROM users WHERE id = ?').get(plan.created_by as number | undefined) as { name: string } | undefined)?.name ?? 'system',
-    approved_by_name: (db.prepare('SELECT name FROM users WHERE id = ?').get(plan.approved_by as number | undefined) as { name: string } | undefined)?.name ?? null,
+    created_by_name:
+      (db.prepare('SELECT name FROM users WHERE id = ?').get(plan.created_by == null ? null : Number(plan.created_by)) as
+        | { name: string }
+        | undefined)?.name ?? 'system',
+    approved_by_name:
+      (db.prepare('SELECT name FROM users WHERE id = ?').get(plan.approved_by == null ? null : Number(plan.approved_by)) as
+        | { name: string }
+        | undefined)?.name ?? null,
     rates: rates
       .filter((rate) => rate.plan_id === plan.id)
       .map((rate) => ({
@@ -1317,12 +1331,20 @@ export function updateReward(
   ).run(
     data.name ?? String(current.title),
     data.description ?? (current.description as string | null) ?? null,
-    data.threshold_amount ?? num(current.threshold_amount ?? current.cost),
-    data.threshold_amount ?? num(current.threshold_amount ?? current.cost),
-    data.budget ?? null,
-    data.max_claims ?? null,
-    data.required_rank_id ?? null,
-    data.is_active === undefined ? current.active : data.is_active ? 1 : 0,
+    // The debit amount is managed by the reward configuration screen; the
+    // administrator edits the eligibility threshold, not the wallet debit.
+    num(current.cost),
+    data.threshold_amount ?? num(current.threshold_amount),
+    data.budget ?? (current.budget == null ? null : num(current.budget)),
+    data.max_claims ?? (current.max_claims == null ? null : num(current.max_claims)),
+    data.required_rank_id ?? (current.required_rank_id == null ? null : num(current.required_rank_id)),
+    data.is_active === undefined
+      ? current.active == null
+        ? 0
+        : Number(current.active)
+      : data.is_active
+        ? 1
+        : 0,
     id,
   )
   return { id }
@@ -1356,6 +1378,8 @@ export function approveRewardClaim(id: number, adminId: number, note?: string | 
      WHERE id = ?`,
   )
   ;(stmt as any).run(note ?? null, adminId, adminId, id)
+  return { id, status: 'approved' }
+}
 
 export function rejectRewardClaim(id: number, adminId: number, note?: string | null) {
   const claim = db.prepare('SELECT * FROM reward_claims WHERE id = ?').get(id) as unknown as Record<string, unknown> | undefined

@@ -2,6 +2,14 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { HttpError } from '../middlewares/error.js'
+import { parseMultipart } from '../middlewares/upload.js'
+import {
+  deleteStoredFile,
+  MAX_UPLOAD_BYTES,
+  SELFIE_MIME_TYPES,
+  storeVerificationDocument,
+  VERIFICATION_MIME_TYPES,
+} from '../utils/storage.js'
 import { listLedger, walletBalance } from '../models/ledger.js'
 import { listCommissions, totalCommissionFor } from '../services/commission.js'
 import { directReferrals, downlineCounts, teamVolume, totalNetworkSize } from '../services/tree.js'
@@ -341,19 +349,72 @@ export function verification(req: Request, res: Response) {
   res.json({ user: { ...user, profile }, profile })
 }
 
-export function storeVerification(req: Request, res: Response) {
+export async function storeVerification(req: Request, res: Response) {
   const memberId = req.user!.id
+  const current = db.prepare('SELECT verification_status FROM users WHERE id = ?').get(memberId) as
+    | { verification_status: string }
+    | undefined
+
+  if (current?.verification_status === 'pending') {
+    throw new HttpError(422, 'Your documents are already under review.')
+  }
+
+  const form = await parseMultipart(req, { maxFileBytes: MAX_UPLOAD_BYTES })
+
   const schema = z.object({
-    full_name: z.string().min(1),
-    nid_number: z.string().min(1),
-    country: z.string().min(1),
+    full_name: z.string().min(1, 'Full name is required').max(120),
+    nid_number: z.string().min(1, 'NID or passport number is required').max(60),
+    country: z.string().min(1, 'Country is required').max(80),
   })
-  const data = schema.parse(req.body)
-  db.prepare(`INSERT INTO member_profiles (member_id, full_name, nid_number, country, updated_at) VALUES (?,?,?,?,datetime('now'))
-    ON CONFLICT(member_id) DO UPDATE SET full_name=excluded.full_name, nid_number=excluded.nid_number, country=excluded.country, updated_at=datetime('now')`)
-    .run(memberId, data.full_name, data.nid_number, data.country)
+  const data = schema.parse(form.fields)
+
+  const nidDocument = form.files.find((file) => file.field === 'nid_document')
+  const selfieDocument = form.files.find((file) => file.field === 'selfie_document')
+
+  if (!nidDocument) throw new HttpError(422, 'An NID or passport document is required.')
+  if (!selfieDocument) throw new HttpError(422, 'A selfie photo is required.')
+  if (!VERIFICATION_MIME_TYPES.includes(nidDocument.mimeType)) {
+    throw new HttpError(422, 'The NID document must be a JPG, PNG or PDF file.')
+  }
+  if (!SELFIE_MIME_TYPES.includes(selfieDocument.mimeType)) {
+    throw new HttpError(422, 'The selfie must be a JPG or PNG image.')
+  }
+
+  const previous = db.prepare('SELECT nid_document_path, selfie_document_path FROM member_profiles WHERE member_id = ?').get(memberId) as
+    | { nid_document_path: string | null; selfie_document_path: string | null }
+    | undefined
+
+  const nid = storeVerificationDocument({ userId: memberId, data: nidDocument.data, mimeType: nidDocument.mimeType })
+  const selfie = storeVerificationDocument({ userId: memberId, data: selfieDocument.data, mimeType: selfieDocument.mimeType })
+
+  db.prepare(
+    `INSERT INTO member_profiles (member_id, full_name, nid_number, country, nid_document_path, selfie_document_path, updated_at)
+     VALUES (?,?,?,?,?,?,datetime('now'))
+     ON CONFLICT(member_id) DO UPDATE SET
+       full_name = excluded.full_name,
+       nid_number = excluded.nid_number,
+       country = excluded.country,
+       nid_document_path = excluded.nid_document_path,
+       selfie_document_path = excluded.selfie_document_path,
+       updated_at = datetime('now')`,
+  ).run(memberId, data.full_name, data.nid_number, data.country, nid.path, selfie.path)
+
+  if (previous?.nid_document_path) deleteStoredFile(previous.nid_document_path)
+  if (previous?.selfie_document_path) deleteStoredFile(previous.selfie_document_path)
+
   db.prepare("UPDATE users SET verification_status = 'pending', updated_at = datetime('now') WHERE id = ?").run(memberId)
-  res.status(201).json({ status: 'ok' })
+  db.prepare('INSERT INTO audit_logs (actor_id, action, subject_type, subject_id, payload) VALUES (?, ?, ?, ?, ?)').run(
+    memberId,
+    'verification.submitted',
+    'user',
+    memberId,
+    JSON.stringify({ nid_document_path: nid.path }),
+  )
+
+  res.status(201).json({
+    status: 'ok',
+    message: 'Documents submitted. A compliance officer will review them shortly.',
+  })
 }
 
 export function claimRewardById(req: Request, res: Response) {

@@ -1,9 +1,24 @@
 import { db, migrate } from './index.js'
 import { createUser, findUserByEmail } from '../models/user.js'
 import { DEFAULT_GENERATION_RATES } from '../config/index.js'
+import {
+  dropLegacyRolePermissions,
+  ensurePermissionCatalogue,
+  ensureRolePermissionMatrix,
+  migrateLegacyRolePermissions,
+  syncRolePermissionMatrix,
+} from '../models/permissions.js'
 import { rebuildAllReferralClosures } from '../services/closure.js'
 
 export const ROLES = ['member', 'super_admin', 'finance_admin', 'compliance_officer', 'support_agent'] as const
+
+export const ROLE_LABELS: Record<string, string> = {
+  member: 'Member',
+  super_admin: 'Super Admin',
+  finance_admin: 'Finance Admin',
+  compliance_officer: 'Compliance Officer',
+  support_agent: 'Support Agent',
+}
 
 export const RANKS = [
   { code: 'rise', name: 'Rise', level: 1, salary: 50, min_direct_links: 3, downline_volume: 5000 },
@@ -80,6 +95,12 @@ export const REWARDS = [
 export function seedRoles() {
   const insert = db.prepare('INSERT OR IGNORE INTO roles (name) VALUES (?)')
   for (const role of ROLES) insert.run(role)
+
+  const label = db.prepare('UPDATE roles SET label = ?, description = ? WHERE name = ?')
+  for (const role of ROLES) {
+    const text = ROLE_LABELS[role] ?? role
+    label.run(text, `${text} role`, role)
+  }
 }
 
 export function seedCompensationPlan() {
@@ -89,7 +110,7 @@ export function seedCompensationPlan() {
   const info = db
     .prepare(
       `INSERT INTO compensation_plans (version, name, status, is_active, commission_base, eligible_transaction_types, created_at)
-       VALUES (1, 'Standard Generation Plan', 'draft', 0, 'eligible_verified_amount', 'sale,deposit,other')`,
+       VALUES (1, 'Standard Generation Plan', 'draft', 0, 'eligible_verified_amount', 'sale,deposit,other', datetime('now'))`,
     )
     .run()
   const planId = Number(info.lastInsertRowid)
@@ -189,22 +210,27 @@ export function seedDemoNetwork() {
   return created
 }
 
+/**
+ * Seed the permission catalogue and the role grant matrix.
+ *
+ * The first run mirrors Laravel's seeder exactly: the legacy `role_permissions`
+ * grants are carried over, then every role is synced to the reference matrix.
+ * Later boots only add missing grants so administrator changes survive a
+ * restart.
+ */
 export function seedPermissions() {
-  const roleRows = db.prepare('SELECT id, name FROM roles').all() as Array<{ id: number; name: string }>
-  const permissions: Record<string, string[]> = {
-    super_admin: ['*'],
-    finance_admin: ['members.view', 'transactions.*', 'withdrawals.*', 'commissions.*', 'salary.*', 'reconciliation.*', 'reports.*'],
-    compliance_officer: ['members.view', 'members.verify', 'verifications.*', 'audit-logs.view'],
-    support_agent: ['members.view', 'members.edit', 'tickets.*'],
-    member: [],
+  ensurePermissionCatalogue()
+
+  const existing = (db.prepare('SELECT COUNT(*) AS c FROM permission_role').get() as { c: number }).c
+
+  if (existing === 0) {
+    migrateLegacyRolePermissions()
+    syncRolePermissionMatrix()
+  } else {
+    ensureRolePermissionMatrix()
   }
 
-  for (const role of roleRows) {
-    const perms = permissions[role.name] ?? []
-    for (const perm of perms) {
-      db.prepare('INSERT OR IGNORE INTO role_permissions (role_id, permission) VALUES (?, ?)').run(role.id, perm)
-    }
-  }
+  dropLegacyRolePermissions()
 }
 
 export function seedRewards() {

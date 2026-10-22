@@ -167,15 +167,15 @@ console.log('\nnetwork and commissions')
 
   const commissions = await call('GET', '/api/member/commissions', undefined, sponsorToken)
   check('sponsor sees the commission', commissions.data?.items?.length === 1, commissions.data)
-  check('commission amount follows the rate', commissions.data?.items?.[0]?.amount === 50, commissions.data?.items?.[0])
+  // Generation 1 pays 5% (Laravel reference rate table), so 500 yields 25.
+  check('commission amount follows the rate', commissions.data?.items?.[0]?.amount === 25, commissions.data?.items?.[0])
 
   const ledger = await call('GET', '/api/member/ledger', undefined, sponsorToken)
-  check('commission is credited to the wallet', ledger.data?.balance === 50, ledger.data?.balance)
+  check('commission is credited to the wallet', ledger.data?.balance === 25, ledger.data?.balance)
 }
 
 console.log('\nwithdrawals')
 {
-  const summary = await call('GET', '/api/member/summary', undefined, sponsorToken)
   const admin = await call('POST', '/api/auth/login', { email: 'admin@nexora.test', password: 'Password123!' })
   const adminToken = admin.data?.token ?? ''
 
@@ -190,7 +190,7 @@ console.log('\nwithdrawals')
   const request = await call(
     'POST',
     '/api/member/withdrawals',
-    { amount: 50, method: 'bank', account_details: '1234567890' },
+    { amount: 25, method: 'bank', account_details: '1234567890' },
     sponsorToken,
   )
   check('valid request is accepted', request.status === 201, request.data)
@@ -240,7 +240,9 @@ console.log('\nranks and reporting')
     headers: { Authorization: `Bearer ${adminToken}` },
   })
   const csvText = await csv.text()
-  check('csv report downloads', csv.status === 200 && csvText.includes('member_code'), csv.status)
+  // The reference export is a Metric/Value summary, matching the Laravel
+  // ReportController::exportRows() output.
+  check('csv report downloads', csv.status === 200 && csvText.includes('Metric'), csv.status)
 
   const xlsx = await fetch(`${BASE}/api/admin/report?format=xlsx`, {
     headers: { Authorization: `Bearer ${adminToken}` },

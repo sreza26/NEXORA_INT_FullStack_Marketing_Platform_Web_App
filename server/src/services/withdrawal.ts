@@ -1,9 +1,22 @@
 import { db } from '../db/index.js'
 import { config } from '../config/index.js'
 import { postLedger, reverseLedger, walletBalance } from '../models/ledger.js'
+import { decryptSecret, encryptSecret } from '../utils/crypto.js'
+import { BusinessRuleError } from '../utils/errors.js'
+
+/**
+ * Withdrawal rows carry an encrypted account detail. The value is decrypted
+ * for display only; it is never stored in the clear.
+ */
+function withDecryptedAccount<T extends { account_details?: string | null }>(rows: T[]): T[] {
+  return rows.map((row) => ({
+    ...row,
+    account_details: decryptSecret(row.account_details ?? null),
+  }))
+}
 
 export function listWithdrawals(memberId: number, limit = 100, offset = 0) {
-  return db
+  const rows = db
     .prepare(
       `SELECT w.id, w.member_id, u.name AS member_name, u.member_code, w.amount, w.method, w.account_details,
               w.status, w.notes, w.requested_at, w.processed_at
@@ -11,11 +24,12 @@ export function listWithdrawals(memberId: number, limit = 100, offset = 0) {
        WHERE w.member_id = ? ORDER BY w.id DESC LIMIT ? OFFSET ?`,
     )
     .all(memberId, limit, offset) as any[]
+  return withDecryptedAccount(rows)
 }
 
 export function listAllWithdrawals(status?: string, limit = 100, offset = 0) {
   if (status) {
-    return db
+    const rows = db
       .prepare(
         `SELECT w.id, w.member_id, u.name AS member_name, u.member_code, w.amount, w.method, w.account_details,
                 w.status, w.notes, w.requested_at, w.processed_at
@@ -23,8 +37,9 @@ export function listAllWithdrawals(status?: string, limit = 100, offset = 0) {
          WHERE w.status = ? ORDER BY w.id DESC LIMIT ? OFFSET ?`,
       )
       .all(status, limit, offset) as any[]
+    return withDecryptedAccount(rows)
   }
-  return db
+  const rows = db
     .prepare(
       `SELECT w.id, w.member_id, u.name AS member_name, u.member_code, w.amount, w.method, w.account_details,
               w.status, w.notes, w.requested_at, w.processed_at
@@ -32,10 +47,13 @@ export function listAllWithdrawals(status?: string, limit = 100, offset = 0) {
        ORDER BY w.id DESC LIMIT ? OFFSET ?`,
     )
     .all(limit, offset) as any[]
+  return withDecryptedAccount(rows)
 }
 
 export function findWithdrawal(id: number) {
-  return db.prepare('SELECT * FROM withdrawal_requests WHERE id = ?').get(id) as any | undefined
+  const row = db.prepare('SELECT * FROM withdrawal_requests WHERE id = ?').get(id) as any | undefined
+  if (!row) return undefined
+  return { ...row, account_details: decryptSecret(row.account_details ?? null) }
 }
 
 export function createWithdrawal(input: {
@@ -46,21 +64,31 @@ export function createWithdrawal(input: {
 }): { id: number; balance: number } {
   const balance = walletBalance(input.memberId)
   if (input.amount < config.withdrawal.minAmount) {
-    throw new Error(`Minimum withdrawal amount is ${config.withdrawal.minAmount}`)
+    throw new BusinessRuleError(`Minimum withdrawal amount is ${config.withdrawal.minAmount}`)
   }
   if (input.amount > config.withdrawal.maxAmount) {
-    throw new Error(`Maximum withdrawal amount is ${config.withdrawal.maxAmount}`)
+    throw new BusinessRuleError(`Maximum withdrawal amount is ${config.withdrawal.maxAmount}`)
   }
   if (input.amount > balance) {
-    throw new Error('Insufficient wallet balance')
+    throw new BusinessRuleError('Insufficient wallet balance')
   }
+
+  const reference = `WDR-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1e6).toString(36).toUpperCase()}`
 
   const info = db
     .prepare(
-      `INSERT INTO withdrawal_requests (member_id, amount, method, account_details, status)
-       VALUES (?, ?, ?, ?, 'pending')`,
+      `INSERT INTO withdrawal_requests
+         (member_id, reference, amount, currency, method, account_details, status, requested_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'), datetime('now'))`,
     )
-    .run(input.memberId, input.amount, input.method, input.accountDetails ?? null)
+    .run(
+      input.memberId,
+      reference,
+      input.amount,
+      config.currency,
+      input.method,
+      input.accountDetails ? encryptSecret(input.accountDetails) : null,
+    )
 
   const id = Number(info.lastInsertRowid)
   const newBalance = postLedger({
@@ -79,8 +107,8 @@ export function createWithdrawal(input: {
 
 export function approveWithdrawal(id: number, adminId: number, notes?: string): void {
   const request = findWithdrawal(id)
-  if (!request) throw new Error('Withdrawal request not found')
-  if (request.status !== 'pending') throw new Error('Withdrawal request is not pending')
+  if (!request) throw new BusinessRuleError('Withdrawal request not found')
+  if (request.status !== 'pending') throw new BusinessRuleError('Withdrawal request is not pending')
 
   db.prepare(
     `UPDATE withdrawal_requests SET status = 'approved', processed_at = datetime('now'), processed_by = ?, notes = ? WHERE id = ?`,
@@ -91,8 +119,8 @@ export function approveWithdrawal(id: number, adminId: number, notes?: string): 
 
 export function rejectWithdrawal(id: number, adminId: number, notes?: string): void {
   const request = findWithdrawal(id)
-  if (!request) throw new Error('Withdrawal request not found')
-  if (request.status !== 'pending') throw new Error('Withdrawal request is not pending')
+  if (!request) throw new BusinessRuleError('Withdrawal request not found')
+  if (request.status !== 'pending') throw new BusinessRuleError('Withdrawal request is not pending')
 
   reverseLedger('withdrawal_request', id, `Withdrawal request #${id} rejected`)
 

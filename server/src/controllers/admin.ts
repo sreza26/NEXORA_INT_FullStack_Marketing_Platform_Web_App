@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { db } from '../db/index.js'
 import { HttpError } from '../middlewares/error.js'
 import { countMembers } from '../models/user.js'
-import { approvedTotal, approveWithdrawal, countByStatus as withdrawalCount, listAllWithdrawals, rejectWithdrawal } from '../services/withdrawal.js'
+import { approvedTotal, approveWithdrawal, countByStatus as withdrawalCount, findWithdrawal, listAllWithdrawals, rejectWithdrawal } from '../services/withdrawal.js'
 import { totalPaidCommission, generateCommissions } from '../services/commission.js'
 import { createReward, listClaims, listRewards, resolveClaim } from '../services/reward.js'
 import { evaluateRank, listRanks, runMonthlySalary } from '../services/rank.js'
@@ -258,7 +258,8 @@ export function resolveWithdrawal(req: Request, res: Response) {
   }
 
   svc.recordAudit(getAdminId(req), `withdrawal.${data.action}d`, 'withdrawal_request', id, data, req.ip)
-  res.json({ success: true })
+  const updated = findWithdrawal(id)
+  res.json({ success: true, status: updated?.status ?? null })
 }
 
 export function approveWithdrawalLegacy(req: Request, res: Response) {

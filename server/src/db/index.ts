@@ -40,13 +40,36 @@ CREATE INDEX IF NOT EXISTS idx_users_sponsor ON users(sponsor_id);
 
 CREATE TABLE IF NOT EXISTS roles (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL UNIQUE
+  name TEXT NOT NULL UNIQUE,
+  label TEXT,
+  description TEXT
 );
 
 CREATE TABLE IF NOT EXISTS user_roles (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
   PRIMARY KEY (user_id, role_id)
+);
+
+CREATE TABLE IF NOT EXISTS permissions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  label TEXT,
+  group_name TEXT
+);
+
+CREATE TABLE IF NOT EXISTS permission_role (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  permission_id INTEGER NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+  role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  UNIQUE (permission_id, role_id)
+);
+
+CREATE TABLE IF NOT EXISTS permission_user (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  permission_id INTEGER NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE (permission_id, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS ranks (
@@ -159,14 +182,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_commissions_unique ON commissions(recipien
 CREATE TABLE IF NOT EXISTS withdrawal_requests (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   member_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reference TEXT,
   amount REAL NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'USD',
   method TEXT NOT NULL,
   account_details TEXT,
   status TEXT NOT NULL DEFAULT 'pending',
   notes TEXT,
+  review_note TEXT,
   requested_at TEXT NOT NULL DEFAULT (datetime('now')),
   processed_at TEXT,
-  processed_by INTEGER REFERENCES users(id)
+  processed_by INTEGER REFERENCES users(id),
+  reviewed_by INTEGER REFERENCES users(id),
+  reviewed_at TEXT,
+  paid_by INTEGER REFERENCES users(id),
+  paid_at TEXT,
+  ledger_entry_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_withdrawals_member ON withdrawal_requests(member_id);
 
@@ -322,13 +355,6 @@ CREATE TABLE IF NOT EXISTS application_settings (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
-CREATE TABLE IF NOT EXISTS role_permissions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-  permission TEXT NOT NULL,
-  UNIQUE (role_id, permission)
-);
 `
 
 export function migrate(): void {
@@ -349,6 +375,8 @@ export function ensureColumn(table: string, column: string, type: string, defaul
 }
 
 const COLUMN_MIGRATIONS: Array<[string, string, string, string?]> = [
+  ['roles', 'label', 'TEXT'],
+  ['roles', 'description', 'TEXT'],
   ['users', 'suspension_reason', 'TEXT'],
   ['users', 'email_verified_at', 'TEXT'],
   ['member_profiles', 'full_name', 'TEXT'],
@@ -385,6 +413,16 @@ const COLUMN_MIGRATIONS: Array<[string, string, string, string?]> = [
   ['rewards', 'budget', 'REAL'],
   ['rewards', 'max_claims', 'INTEGER'],
   ['rewards', 'required_rank_id', 'INTEGER'],
+  ['withdrawal_requests', 'reference', 'TEXT'],
+  ['withdrawal_requests', 'currency', "TEXT DEFAULT 'USD'"],
+  ['withdrawal_requests', 'review_note', 'TEXT'],
+  ['withdrawal_requests', 'reviewed_by', 'INTEGER'],
+  ['withdrawal_requests', 'reviewed_at', 'TEXT'],
+  ['withdrawal_requests', 'paid_by', 'INTEGER'],
+  ['withdrawal_requests', 'paid_at', 'TEXT'],
+  ['withdrawal_requests', 'ledger_entry_id', 'INTEGER'],
+  ['withdrawal_requests', 'created_at', 'TEXT'],
+  ['withdrawal_requests', 'updated_at', 'TEXT'],
   ['reward_claims', 'note', 'TEXT'],
   ['reward_claims', 'reviewed_by', 'INTEGER'],
   ['reward_claims', 'reviewed_at', 'TEXT'],
@@ -422,6 +460,14 @@ function applyColumnMigrations(): void {
   db.exec(`UPDATE wallet_accounts SET pending_balance = 0 WHERE pending_balance IS NULL`)
   db.exec(`UPDATE wallet_accounts SET lifetime_credited = 0 WHERE lifetime_credited IS NULL`)
   db.exec(`UPDATE wallet_accounts SET lifetime_debited = 0 WHERE lifetime_debited IS NULL`)
+  db.exec(
+    `UPDATE withdrawal_requests SET created_at = COALESCE(created_at, requested_at, datetime('now'))
+     WHERE created_at IS NULL`,
+  )
+  db.exec(
+    `UPDATE withdrawal_requests SET updated_at = COALESCE(updated_at, processed_at, created_at, datetime('now'))
+     WHERE updated_at IS NULL`,
+  )
 }
 
 export function transaction<T>(fn: () => T): T {

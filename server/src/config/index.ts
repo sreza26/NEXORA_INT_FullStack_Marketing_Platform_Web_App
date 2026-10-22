@@ -57,6 +57,16 @@ export const config = {
   currency: process.env.CURRENCY ?? 'USD',
   memberCodePrefix: process.env.MEMBER_CODE_PREFIX ?? 'NX',
   memberCodeLength: num(process.env.MEMBER_CODE_LENGTH, 8),
+  // Password hashing cost. The Laravel reference uses BCRYPT_ROUNDS=12.
+  bcryptRounds: num(process.env.BCRYPT_ROUNDS, 12),
+  // Key material for encrypting secrets at rest (withdrawal account details).
+  encryptionKey: process.env.ENCRYPTION_KEY ?? process.env.APP_KEY ?? 'nexora-development-encryption-key',
+  rateLimit: {
+    login: { max: num(process.env.RATE_LIMIT_LOGIN, 5), windowMs: 60_000 },
+    registration: { max: num(process.env.RATE_LIMIT_REGISTRATION, 10), windowMs: 3_600_000 },
+    sensitive: { max: num(process.env.RATE_LIMIT_SENSITIVE, 10), windowMs: 60_000 },
+    contact: { max: num(process.env.RATE_LIMIT_CONTACT, 10), windowMs: 60_000 },
+  },
   commission: {
     generation: num(process.env.COMMISSION_GENERATION, 3),
     enabled: (process.env.COMMISSION_ENABLED ?? 'true') === 'true',
@@ -67,7 +77,8 @@ export const config = {
     generationRates: parseGenerationRates(process.env.COMMISSION_GENERATION_RATES),
   },
   withdrawal: {
-    minAmount: num(process.env.WITHDRAWAL_MIN, 50),
+    // Laravel reference: config/nexora.php withdrawals.min_amount = 10.
+    minAmount: num(process.env.WITHDRAWAL_MIN, 10),
     maxAmount: num(process.env.WITHDRAWAL_MAX, 10000),
     holdDays: num(process.env.WITHDRAWAL_HOLD_DAYS, 3),
     enabled: (process.env.WITHDRAWAL_ENABLED ?? 'true') === 'true',

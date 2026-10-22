@@ -9,6 +9,7 @@ export interface AuthUser {
   name: string
   member_code: string
   roles: string[]
+  permissions: string[]
   status: string
 }
 
@@ -53,6 +54,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
       name: user.name,
       member_code: user.member_code,
       roles: user.roles,
+      permissions: user.permissions,
       status: user.status,
     }
     next()

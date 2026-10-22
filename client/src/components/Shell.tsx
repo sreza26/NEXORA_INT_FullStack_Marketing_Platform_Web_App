@@ -5,6 +5,10 @@ export interface NavItem {
   to: string
   label: string
   icon?: React.ReactNode
+  /** Permission required to see and open this entry. */
+  permission?: string
+  /** Any one of these permissions is enough. */
+  anyPermission?: string[]
 }
 
 export interface NavGroup {

@@ -33,6 +33,7 @@ function publicUser(id: number) {
     status: user.status,
     verification_status: user.verification_status,
     roles: user.roles,
+    permissions: user.permissions,
     created_at: user.created_at,
     updated_at: user.updated_at,
   }
@@ -80,6 +81,7 @@ export function register(req: Request, res: Response) {
     name: user.name,
     member_code: user.member_code,
     roles: user.roles,
+    permissions: user.permissions,
     status: user.status,
   })
 
@@ -103,6 +105,7 @@ export function login(req: Request, res: Response) {
     name: user.name,
     member_code: user.member_code,
     roles: user.roles,
+    permissions: user.permissions,
     status: user.status,
   })
 
