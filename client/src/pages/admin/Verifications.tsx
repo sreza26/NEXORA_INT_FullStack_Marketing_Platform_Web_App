@@ -23,7 +23,8 @@ export default function Verifications() {
   usePageTitle('Verification Queue')
   const [items, setItems] = useState<VerificationRow[]>([])
   const [message, setMessage] = useState('')
-  const [notes, setNotes] = useState<Record<number, string>>({})
+  const [approvalNotes, setApprovalNotes] = useState<Record<number, string>>({})
+  const [rejectionNotes, setRejectionNotes] = useState<Record<number, string>>({})
 
   async function load() {
     try {
@@ -40,8 +41,9 @@ export default function Verifications() {
 
   function decide(id: number, decision: 'verified' | 'rejected') {
     setMessage('')
+    const note = decision === 'verified' ? approvalNotes[id] : rejectionNotes[id]
     api
-      .post(`/admin/members/${id}/verify`, { decision, note: notes[id] ?? null })
+      .post(`/admin/members/${id}/verify`, { decision, note: note || null })
       .then(() => {
         setMessage('Identity verification updated.')
         load()
@@ -88,7 +90,7 @@ export default function Verifications() {
                 <div>
                   <dt className="stat-label">Submitted</dt>
                   <dd className="font-semibold text-navy-900">
-                    {member.updated_at ? new Date(member.updated_at.replace(' ', 'T')).toLocaleString() : '—'}
+                    {member.updated_at ? (() => { const d = new Date(String(member.updated_at).replace(' ', 'T')); const day = String(d.getDate()).padStart(2,'0'); const month = d.toLocaleString('en-US',{month:'short'}); const h = String(d.getHours()).padStart(2,'0'); const m = String(d.getMinutes()).padStart(2,'0'); return `${day} ${month} ${h}:${m}`; })() : '—'}
                   </dd>
                 </div>
                 <div>
@@ -120,8 +122,8 @@ export default function Verifications() {
                     className="input"
                     id={`note-${member.id}`}
                     maxLength={1000}
-                    value={notes[member.id] ?? ''}
-                    onChange={(e) => setNotes({ ...notes, [member.id]: e.target.value })}
+                    value={approvalNotes[member.id] ?? ''}
+                    onChange={(e) => setApprovalNotes({ ...approvalNotes, [member.id]: e.target.value })}
                   />
                 </div>
                 <button className="btn btn-accent btn-sm" onClick={() => decide(member.id, 'verified')}>Approve</button>
@@ -135,8 +137,8 @@ export default function Verifications() {
                     className="input"
                     id={`reject-note-${member.id}`}
                     maxLength={1000}
-                    value={notes[member.id] ?? ''}
-                    onChange={(e) => setNotes({ ...notes, [member.id]: e.target.value })}
+                    value={rejectionNotes[member.id] ?? ''}
+                    onChange={(e) => setRejectionNotes({ ...rejectionNotes, [member.id]: e.target.value })}
                   />
                 </div>
                 <button className="btn btn-danger btn-sm" onClick={() => decide(member.id, 'rejected')}>Reject</button>

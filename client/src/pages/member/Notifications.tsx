@@ -5,22 +5,42 @@ import { Bell } from 'lucide-react'
 
 interface Notification {
   id: number
-  read_at?: string
+  read_at?: string | null
   created_at: string
   data?: any
   type?: string
 }
 
+function relativeTime(at?: string) {
+  if (!at) return '—'
+  const d = new Date(String(at).replace(' ', 'T'))
+  const now = new Date()
+  const diffMs = now.getTime() - d.getTime()
+  const diffSec = Math.round(diffMs / 1000)
+  const diffMin = Math.round(diffSec / 60)
+  const diffHr = Math.round(diffMin / 60)
+  const diffDay = Math.round(diffHr / 24)
+  if (diffSec < 60) return 'Just now'
+  if (diffMin < 60) return `${diffMin}m ago`
+  if (diffHr < 24) return `${diffHr}h ago`
+  if (diffDay < 7) return `${diffDay}d ago`
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
 export default function Notifications() {
   usePageTitle('Notifications')
-  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [items, setItems] = useState<Notification[]>([])
+  const [total, setTotal] = useState(0)
 
   async function load() {
     try {
       const res = await api.get('/member/notifications')
-      setNotifications(res.data.notifications || [])
+      const data = res.data || {}
+      setItems(data.items || data.notifications || [])
+      setTotal(typeof data.total === 'number' ? data.total : (data.items || data.notifications || []).length)
     } catch {
-      setNotifications([])
+      setItems([])
+      setTotal(0)
     }
   }
 
@@ -48,10 +68,10 @@ export default function Notifications() {
       </div>
 
       <div className="mt-6 space-y-3">
-        {notifications.length === 0 ? (
+        {items.length === 0 ? (
           <div className="card card-pad text-center text-sm text-slate-400">You have no notifications yet.</div>
         ) : (
-          notifications.map((notification) => {
+          items.map((notification) => {
             const data = typeof notification.data === 'string' ? JSON.parse(notification.data) : notification.data || {}
             return (
               <div key={notification.id} className={`card card-pad flex items-start gap-4 ${notification.read_at ? 'opacity-70' : ''}`}>
@@ -60,17 +80,21 @@ export default function Notifications() {
                 </span>
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-semibold text-navy-900">{data.title || notification.type}</p>
-                    <span className="text-xs text-slate-400">{notification.created_at ? new Date(notification.created_at.replace(' ', 'T')).toLocaleString() : ''}</span>
+                    <p className="font-semibold text-navy-900">{data.title || notification.type || 'Notification'}</p>
+                    <span className="text-xs text-slate-400">{relativeTime(notification.created_at)}</span>
                   </div>
                   {data.message ? <p className="mt-1 text-sm text-slate-600">{data.message}</p> : null}
                 </div>
-                {!notification.read_at ? <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-accent-500"></span> : null}
+                {!notification.read_at ? <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-accent-500" /> : null}
               </div>
             )
           })
         )}
       </div>
+
+      {total > 0 && (
+        <div className="mt-4 text-xs text-slate-400">{total} notification{total === 1 ? '' : 's'}</div>
+      )}
     </>
   )
 }

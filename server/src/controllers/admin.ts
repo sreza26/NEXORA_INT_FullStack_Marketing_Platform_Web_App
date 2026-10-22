@@ -627,8 +627,17 @@ export function updateSettings(req: Request, res: Response) {
 }
 
 export function report(req: Request, res: Response) {
-  const format = String(req.query.format ?? 'xlsx')
-  const rows = svc.reportExportRows(svc.reportMetrics(String(req.query.from ?? '1970-01-01'), String(req.query.to ?? '2100-01-01')))
+  let format = String(req.query.format ?? '').toLowerCase()
+  const from = String(req.query.from ?? '1970-01-01')
+  const to = String(req.query.to ?? '2100-01-01')
+  if (!format && !req.path.includes('/reports/csv') && !req.path.includes('/reports/xlsx')) {
+    res.json({ from, to, metrics: svc.reportMetrics(from, to) })
+    return
+  }
+  if (!format && req.path.includes('/reports/csv')) format = 'csv'
+  else if (!format && req.path.includes('/reports/xlsx')) format = 'xlsx'
+  else if (!format) format = 'xlsx'
+  const rows = svc.reportExportRows(svc.reportMetrics(from, to))
   if (format === 'csv') {
     const header = 'Metric,Value'
     const body = rows.map(([k, v]) => `"${k.replace(/"/g, '""')}","${v.replace(/"/g, '""')}"`).join('\n')

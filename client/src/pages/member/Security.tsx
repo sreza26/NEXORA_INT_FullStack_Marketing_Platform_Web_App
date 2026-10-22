@@ -1,23 +1,39 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
 import { usePageTitle } from '../../lib/usePageTitle'
 
+interface SecurityForm {
+  current_password: string
+  password: string
+  password_confirmation: string
+}
+
 export default function Security() {
   usePageTitle('Security')
-  const [form, setForm] = useState({ current_password: '', password: '', password_confirmation: '' })
+  const navigate = useNavigate()
+  const [form, setForm] = useState<SecurityForm>({ current_password: '', password: '', password_confirmation: '' })
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [confirming, setConfirming] = useState(false)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     setMessage('')
+    if (form.password !== form.password_confirmation) {
+      setError('New passwords do not match.')
+      return
+    }
+    setConfirming(true)
     try {
       await api.put('/member/security/password', form)
       setMessage('Password updated.')
       setForm({ current_password: '', password: '', password_confirmation: '' })
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Unable to update password')
+      setError(err?.response?.data?.message ?? 'Unable to update password')
+    } finally {
+      setConfirming(false)
     }
   }
 
@@ -56,7 +72,7 @@ export default function Security() {
           <p className="text-xs text-slate-400">Minimum 8 characters with letters and numbers.</p>
           {error && <p className="flash-err">{error}</p>}
           {message && <p className="flash-ok">{message}</p>}
-          <button type="submit" className="btn btn-primary">Update password</button>
+          <button type="submit" className="btn btn-primary" disabled={confirming}>Update password</button>
         </form>
 
         <div className="space-y-4">
@@ -73,6 +89,7 @@ export default function Security() {
           <div className="card card-pad">
             <h2 className="font-bold text-navy-900">Session</h2>
             <p className="mt-2 text-sm text-slate-500">Signed in as {user?.email} on this device.</p>
+            <button type="button" onClick={() => { localStorage.removeItem('nexora_token'); localStorage.removeItem('nexora_user'); navigate('/login') }} className="btn btn-outline w-full mt-4">Log out of this device</button>
           </div>
         </div>
       </div>

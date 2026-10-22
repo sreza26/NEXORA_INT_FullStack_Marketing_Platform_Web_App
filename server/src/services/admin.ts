@@ -1282,7 +1282,7 @@ export function rewardsAdmin() {
 
   const claims = db
     .prepare(
-      `SELECT c.id, c.member_id, c.reward_id, c.cost, c.status, c.note, c.claimed_at, c.created_at, c.approved_at,
+      `SELECT c.id, c.member_id, c.reward_id, c.cost, c.status, c.note, c.claimed_at, c.approved_at,
               u.name AS member_name, u.member_code, rw.title AS reward_name
        FROM reward_claims c JOIN users u ON u.id = c.member_id JOIN rewards rw ON rw.id = c.reward_id
        ORDER BY c.id DESC LIMIT 500`,
@@ -1359,7 +1359,7 @@ export function rewardClaimsPage(status?: string) {
   }
   const rows = db
     .prepare(
-      `SELECT c.id, c.member_id, c.reward_id, c.cost, c.status, c.note, c.claimed_at, c.created_at, c.approved_at,
+      `SELECT c.id, c.member_id, c.reward_id, c.cost, c.status, c.note, c.claimed_at, c.approved_at,
               u.name AS member_name, u.member_code, rw.title AS reward_name
        FROM reward_claims c JOIN users u ON u.id = c.member_id JOIN rewards rw ON rw.id = c.reward_id
        ${where} ORDER BY c.id DESC LIMIT 500`,

@@ -222,5 +222,7 @@ router.post('/purchases', sensitive, requirePermission('transactions.create'), r
 // Reports (export)
 router.get('/reports', requirePermission('reports.view'), report)
 router.get('/reports/export', requirePermission('reports.export'), report)
+router.get('/reports/xlsx', requirePermission('reports.export'), report)
+router.get('/reports/csv', requirePermission('reports.export'), report)
 
 export default router

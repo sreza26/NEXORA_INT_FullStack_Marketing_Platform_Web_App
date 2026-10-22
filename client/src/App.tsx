@@ -44,6 +44,8 @@ import AdminCommissions from './pages/admin/Commissions'
 import Ranks from './pages/admin/Ranks'
 import RankReports from './pages/admin/RankReports'
 import AdminSalary from './pages/admin/Salary'
+import CommissionPreview from './pages/admin/CommissionPreview'
+import CommissionExceptions from './pages/admin/CommissionExceptions'
 import RewardClaims from './pages/admin/RewardClaims'
 import Announcements from './pages/admin/Announcements'
 import AuditLogs from './pages/admin/AuditLogs'
@@ -165,6 +167,9 @@ function App() {
         <Route path="salary" element={<AdminSalary />} />
         <Route path="reward-claims" element={<RewardClaims />} />
         <Route path="withdrawals" element={<AdminWithdrawals />} />
+        <Route path="commission-preview" element={<CommissionPreview />} />
+        <Route path="plans/:id/preview" element={<CommissionPreview />} />
+        <Route path="commission-exceptions" element={<CommissionExceptions />} />
         <Route path="rewards" element={<AdminRewards />} />
       </Route>
 

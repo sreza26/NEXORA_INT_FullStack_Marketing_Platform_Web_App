@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import { api } from '../../lib/api'
 import { usePageTitle } from '../../lib/usePageTitle'
-import { ArrowLeft } from 'lucide-react'
+import { Table } from '../../components/Shell'
 
 export default function TeamShow() {
   const { id } = useParams()
@@ -49,7 +50,7 @@ export default function TeamShow() {
           </div>
           <div>
             <dt className="stat-label">Registered</dt>
-            <dd className="mt-1 text-sm font-semibold text-navy-900">{member.registered_at ? new Date(member.registered_at.replace(' ', 'T')).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</dd>
+            <dd className="mt-1 text-sm font-semibold text-navy-900">{member.registered_at ? new Date(String(member.registered_at).replace(' ', 'T')).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</dd>
           </div>
           <div>
             <dt className="stat-label">Verification</dt>
@@ -60,34 +61,22 @@ export default function TeamShow() {
 
       <div className="mt-6 card overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <h2 className="font-bold text-navy-900">Direct referrals of {member.name.split(' ')[0]}</h2>
+          <h2 className="font-bold text-navy-900">Direct referrals of {String(member.name).split(' ')[0]}</h2>
           <span className="badge badge-muted">{(data.directReferrals || []).length} shown</span>
         </div>
         <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Member</th>
-                <th>Member code</th>
-                <th>Rank</th>
-                <th>Joined</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data.directReferrals || []).length === 0 ? (
-                <tr><td colSpan={4} className="text-center text-slate-400">No direct referrals yet.</td></tr>
-              ) : (
-                (data.directReferrals || []).map((ref: any) => (
-                  <tr key={ref.id}>
-                    <td className="font-semibold text-navy-900">{ref.name}</td>
-                    <td className="font-mono text-xs">{ref.member_code}</td>
-                    <td>{ref.currentRank?.name || '—'}</td>
-                    <td className="text-sm text-slate-500">{ref.registered_at ? new Date(ref.registered_at.replace(' ', 'T')).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+          <Table
+            head={['Member', 'Member code', 'Rank', 'Joined']}
+            rows={(data.directReferrals || []).length === 0
+              ? [['No direct referrals yet.', '', '', '']]
+              : (data.directReferrals || []).map((ref: any) => [
+                  <span key={`name-${ref.id}`} className="font-semibold text-navy-900">{ref.name}</span>,
+                  <span key={`code-${ref.id}`} className="font-mono text-xs">{ref.member_code}</span>,
+                  ref.currentRank?.name || '—',
+                  ref.registered_at ? new Date(String(ref.registered_at).replace(' ', 'T')).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
+                ])
+            }
+          />
         </div>
       </div>
     </>

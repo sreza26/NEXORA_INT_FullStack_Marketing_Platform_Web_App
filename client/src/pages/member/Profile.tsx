@@ -2,25 +2,35 @@ import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import { usePageTitle } from '../../lib/usePageTitle'
 
+const EMPTY_PROFILE = {
+  name: '',
+  phone: '',
+  country: '',
+  city: '',
+  address_line: '',
+  emergency_contact: '',
+} as const
+
 export default function Profile() {
   usePageTitle('Profile')
   const [user, setUser] = useState<any>(null)
   const [profile, setProfile] = useState<any>(null)
-  const [form, setForm] = useState({ name: '', phone: '', country: '', city: '', address_line: '', emergency_contact: '' })
+  const [form, setForm] = useState<Record<string, string>>(EMPTY_PROFILE)
   const [message, setMessage] = useState('')
+  const [verifying, setVerifying] = useState(false)
 
   async function load() {
     try {
       const [sRes, pRes] = await Promise.all([api.get('/member/summary'), api.get('/member/profile')])
-      setUser(sRes.data.user)
-      setProfile(pRes.data)
+      setUser(sRes.data?.user ?? null)
+      setProfile(pRes.data || null)
       setForm({
-        name: sRes.data.user?.name || '',
-        phone: sRes.data.user?.phone || '',
-        country: pRes.data?.country || '',
-        city: pRes.data?.city || '',
-        address_line: pRes.data?.address_line || pRes.data?.address || '',
-        emergency_contact: pRes.data?.emergency_contact || '',
+        name: sRes.data?.user?.name ?? '',
+        phone: sRes.data?.user?.phone ?? '',
+        country: pRes.data?.country ?? '',
+        city: pRes.data?.city ?? '',
+        address_line: pRes.data?.address_line ?? '',
+        emergency_contact: pRes.data?.emergency_contact ?? '',
       })
     } catch {
       // ignore
@@ -38,10 +48,27 @@ export default function Profile() {
       await api.put('/member/profile', form)
       setMessage('Profile updated.')
       await load()
-    } catch {
-      // ignore
+    } catch (err: any) {
+      setMessage(err?.response?.data?.message ?? 'Unable to update profile')
     }
   }
+
+  async function sendVerificationLink() {
+    setVerifying(true)
+    try {
+      await api.post('/auth/email/verification-notification')
+      setMessage('Verification link sent.')
+      await load()
+    } catch (err: any) {
+      setMessage(err?.response?.data?.message ?? 'Could not send a verification link.')
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  const status = user?.verification_status === 'verified' ? 'verified' : user?.verification_status === 'pending' ? 'pending' : user?.verification_status === 'rejected' ? 'rejected' : 'unverified'
+  const statusBadgeClass = status === 'verified' ? 'badge-success' : status === 'pending' ? 'badge-warn' : status === 'rejected' ? 'badge-danger' : 'badge-muted'
+  const statusLabel = String(status).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
 
   return (
     <>
@@ -112,13 +139,25 @@ export default function Profile() {
               </div>
               <div className="flex justify-between">
                 <dt className="text-slate-500">Verification</dt>
-                <dd><span className={`badge ${user?.verification_status === 'verified' ? 'badge-success' : user?.verification_status === 'pending' ? 'badge-warn' : 'badge-muted'}`}>{String(user?.verification_status || '').replace(/_/g, ' ')}</span></dd>
+                <dd><span className={`badge ${statusBadgeClass}`}>{statusLabel}</span></dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-slate-500">Joined</dt>
-                <dd className="font-semibold text-navy-900">{user?.registered_at ? new Date(user.registered_at.replace(' ', 'T')).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</dd>
+                <dd className="font-semibold text-navy-900">{user?.registered_at ? new Date(String(user.registered_at).replace(' ', 'T')).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</dd>
               </div>
             </dl>
+          </div>
+
+          <div className="card card-pad">
+            <h2 className="font-bold text-navy-900">Email verification</h2>
+            {status === 'verified' ? (
+              <p className="mt-2 flex items-center gap-2 text-sm text-emerald-600"><span className="h-4 w-4 rounded-full bg-emerald-500 inline-block" /> Email verified.</p>
+            ) : (
+              <>
+                <p className="mt-2 text-sm text-slate-500">Your email is not verified yet.</p>
+                <button type="button" onClick={sendVerificationLink} className="btn btn-outline btn-sm w-full mt-3" disabled={verifying}>{verifying ? 'Sending...' : 'Send verification link'}</button>
+              </>
+            )}
           </div>
         </div>
       </div>

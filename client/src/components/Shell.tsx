@@ -231,16 +231,31 @@ export function Stat({ label, value }: { label: string; value: string | number }
   )
 }
 
-export function Table({ head, rows }: { head: string[]; rows: (string | number)[][] }) {
+export function Table({
+  head,
+  rows,
+  align,
+}: {
+  head: string[]
+  rows: React.ReactNode[][]
+  /** Optional per-column alignment, e.g. `['left', 'right']` for money columns. */
+  align?: ('left' | 'right')[]
+}) {
   return (
     <table className="data-table">
       <thead>
-        <tr>{head.map((h) => <th key={h}>{h}</th>)}</tr>
+        <tr>
+          {head.map((h, i) => (
+            <th key={h} className={align?.[i] === 'right' ? 'text-right' : undefined}>{h}</th>
+          ))}
+        </tr>
       </thead>
       <tbody>
         {rows.map((row, i) => (
           <tr key={i}>
-            {row.map((cell, j) => <td key={j}>{cell}</td>)}
+            {row.map((cell, j) => (
+              <td key={j} className={align?.[j] === 'right' ? 'text-right' : undefined}>{cell}</td>
+            ))}
           </tr>
         ))}
       </tbody>

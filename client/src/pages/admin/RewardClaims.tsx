@@ -6,7 +6,7 @@ import { Stat } from '../../components/Shell'
 export default function RewardClaims() {
   usePageTitle('Reward Claims')
   const [items, setItems] = useState<any[]>([])
-  useEffect(() => { api.get('/admin/reward-claims').then((res) => setItems(res.data)).catch(() => undefined) }, [])
+  useEffect(() => { api.get('/admin/reward-claims').then((res) => setItems(res.data?.items ?? [])).catch(() => undefined) }, [])
   const pending = items.filter((i) => i.status === 'pending').length
   const approved = items.filter((i) => i.status === 'approved').length
   return (

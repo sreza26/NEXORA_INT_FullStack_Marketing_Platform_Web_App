@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import { usePageTitle } from '../../lib/usePageTitle'
+import { Stat } from '../../components/Shell'
 import { Info, MessageCircle, Send, Mail } from 'lucide-react'
 
 export default function Referrals() {
@@ -10,11 +11,13 @@ export default function Referrals() {
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    Promise.all([api.get('/member/referrals'), api.get('/member/summary')]).then(([r, s]) => {
+    Promise.all([api.get('/member/network'), api.get('/member/summary')]).then(([net, s]) => {
       setUser(s.data.user)
-      const code = s.data.user?.member_code
-      if (code) setReferralUrl(`${window.location.origin}/r/${code}`)
-      else setReferralUrl(r.data.referral_link || '')
+      if (net.data.referral_link) setReferralUrl(net.data.referral_link)
+      else {
+        const code = s.data.user?.member_code
+        if (code) setReferralUrl(`${window.location.origin}/r/${code}`)
+      }
     }).catch(() => undefined)
   }, [])
 
@@ -43,14 +46,8 @@ export default function Referrals() {
           <p className="hint">New members who open this link join under your sponsorship automatically.</p>
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <div className="rounded-xl bg-slate-50 p-4">
-              <p className="stat-label">Your member code</p>
-              <p className="mt-1 font-mono text-lg font-bold text-navy-900">{user?.member_code}</p>
-            </div>
-            <div className="rounded-xl bg-slate-50 p-4">
-              <p className="stat-label">Referral landing path</p>
-              <p className="mt-1 font-mono text-lg font-bold text-navy-900">/r/{user?.member_code}</p>
-            </div>
+            <Stat label="Your member code" value={user?.member_code || '—'} />
+            <Stat label="Referral landing path" value={user?.member_code ? `/r/${user.member_code}` : '—'} />
           </div>
 
           <div className="mt-5 rounded-xl border border-accent-500/30 bg-accent-500/5 p-4 text-sm text-slate-600">

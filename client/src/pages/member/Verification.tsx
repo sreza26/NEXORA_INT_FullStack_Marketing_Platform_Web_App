@@ -19,9 +19,9 @@ export default function Verification() {
       setUser(u)
       setProfile(u.profile || res.data.profile || {})
       setForm({
-        full_name: u.profile?.full_name || profile?.full_name || u.name || '',
-        nid_number: u.profile?.nid_number || profile?.nid_number || '',
-        country: u.profile?.country || profile?.country || '',
+        full_name: u.profile?.full_name || u.name || '',
+        nid_number: u.profile?.nid_number || '',
+        country: u.profile?.country || '',
       })
     } catch {
       // ignore
@@ -87,7 +87,7 @@ export default function Verification() {
             <p className="mt-2 text-sm text-slate-600">Your documents were submitted and a compliance officer will review them shortly. You will be notified once your status changes.</p>
           </div>
         ) : (
-          <form onSubmit={submit} className="card card-pad space-y-4">
+          <form onSubmit={submit} className="card card-pad space-y-4" encType="multipart/form-data">
             <h2 className="font-bold text-navy-900">Submit documents</h2>
 
             <div>
@@ -157,11 +157,23 @@ export default function Verification() {
               </div>
               <div className="flex justify-between gap-3">
                 <dt className="shrink-0 text-slate-500">ID document</dt>
-                <dd className="text-right"><span className="text-slate-400">Not uploaded</span></dd>
+                <dd className="text-right">
+                  {profile?.nid_document_path ? (
+                    <a className="font-semibold text-accent-600 hover:underline" href={`/files/verification/${profile.nid_document_path}`} target="_blank" rel="noopener noreferrer">View uploaded file</a>
+                  ) : (
+                    <span className="text-slate-400">Not uploaded</span>
+                  )}
+                </dd>
               </div>
               <div className="flex justify-between gap-3">
                 <dt className="shrink-0 text-slate-500">Selfie</dt>
-                <dd className="text-right"><span className="text-slate-400">Not uploaded</span></dd>
+                <dd className="text-right">
+                  {profile?.selfie_document_path ? (
+                    <a className="font-semibold text-accent-600 hover:underline" href={`/files/verification/${profile.selfie_document_path}`} target="_blank" rel="noopener noreferrer">View uploaded file</a>
+                  ) : (
+                    <span className="text-slate-400">Not uploaded</span>
+                  )}
+                </dd>
               </div>
             </dl>
           </div>
