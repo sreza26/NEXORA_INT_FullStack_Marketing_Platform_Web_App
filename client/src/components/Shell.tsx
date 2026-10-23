@@ -1,5 +1,5 @@
+import { Fragment, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { useState } from 'react'
 import { Bell, LogOut, Menu, X } from 'lucide-react'
 import { hasAnyPermission, hasPermission, type AuthUser } from '../lib/auth'
 
@@ -116,7 +116,7 @@ export function Shell({
             const items = group.items.filter((item) => isNavItemVisible(item, account))
             if (items.length === 0) return null
             return (
-              <div key={group.heading}>
+              <Fragment key={group.heading}>
                 <p className="px-3 pb-2 pt-5 text-[10px] font-bold uppercase tracking-widest text-slate-500 first:pt-0">
                   {group.heading}
                 </p>
@@ -136,7 +136,7 @@ export function Shell({
                     )}
                   </NavLink>
                 ))}
-              </div>
+              </Fragment>
             )
           })}
         </nav>

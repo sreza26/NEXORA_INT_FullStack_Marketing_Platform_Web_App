@@ -66,6 +66,8 @@ import {
   jobs,
   settings,
   updateSettings,
+  demoDataStatus,
+  purgeDemoData,
   network,
 } from '../controllers/admin.js'
 import { authenticate, requireRole } from '../middlewares/auth.js'
@@ -76,7 +78,7 @@ import { config } from '../config/index.js'
 const router = Router()
 
 router.use(authenticate)
-router.use(requireRole('super_admin', 'finance_admin', 'compliance_officer', 'support_agent'))
+router.use(requireRole('developer', 'super_admin', 'finance_admin', 'compliance_officer', 'support_agent'))
 
 // Laravel throttle:sensitive -> 10 requests per minute, keyed by user and IP.
 // The Laravel "sensitive" throttle is one named limiter shared by the member
@@ -116,7 +118,7 @@ router.get('/verifications', requirePermission('members.verify_identity'), verif
 
 // Roles
 router.get('/roles', requirePermission('roles.manage'), roles)
-router.post('/roles/:user/assign', sensitive, requirePermission('roles.manage'), requireRole('super_admin'), assignRole)
+router.post('/roles/:user/assign', sensitive, requirePermission('roles.manage'), requireRole('developer', 'super_admin'), assignRole)
 
 // Transactions
 router.get('/transactions', requirePermission('transactions.view'), transactions)
@@ -214,6 +216,10 @@ router.get('/jobs', requirePermission('jobs.view'), jobs)
 // Settings
 router.get('/settings', requirePermission('settings.manage'), settings)
 router.put('/settings', sensitive, requirePermission('settings.manage'), updateSettings)
+
+// Demo data maintenance
+router.get('/demo-data', requirePermission('settings.manage'), demoDataStatus)
+router.delete('/demo-data', sensitive, requirePermission('settings.manage'), purgeDemoData)
 
 // Legacy / other routes
 router.get('/ranks-legacy', requirePermission('ranks.manage'), ranksLegacy)

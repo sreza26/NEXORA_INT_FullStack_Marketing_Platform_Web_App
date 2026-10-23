@@ -33,10 +33,17 @@ test.bat
 
 ## Demo accounts
 
-| Role   | Email                | Password        |
-| ------ | -------------------- | --------------- |
-| Admin  | admin@nexora.test    | `Password123!`  |
-| Member | leader@nexora.test   | `Password123!`  |
+| Role      | Email                | Password        |
+| --------- | -------------------- | --------------- |
+| Developer | sreza26@gmail.com    | `NexoraDev@2026!` |
+| Admin     | admin@nexora.test    | `Password123!`  |
+| Member    | leader@nexora.test   | `Password123!`  |
+
+> The **developer** account is created on first boot and is hidden from the
+> member directory, member counts and every non-developer administrator. Set
+> `DEVELOPER_PASSWORD` in `server/.env` before the first boot to override the
+> password above. Once the account has the `developer` role the password is not
+> reset again on restart.
 
 ## Project layout
 
@@ -76,8 +83,30 @@ scripts/                helper scripts
   carries a monthly salary paid into the wallet.
 - **Rewards** — claimed with wallet balance, refunded automatically when a
   claim is rejected.
-- **RBAC** — `member`, `support_agent`, `compliance_officer`,
+- **RBAC** — `member`, `developer`, `support_agent`, `compliance_officer`,
   `finance_admin`, `super_admin`. Every admin route requires a non-member role.
+  `super_admin` and `developer` pass every permission check; only the
+  `developer` role can open the system debug panel or act on the developer
+  account.
+
+## Developer panel
+
+Sign in as the developer and open **Developer → System Debug Panel**
+(`/developer`) to inspect data normally hidden from the admin UI:
+
+- **Overview** — runtime environment, SQLite version, database file/size,
+  memory and uptime, pending work counters, per-table row counts and recent
+  scheduled job runs.
+- **Users & activity** — every account (including the developer) with roles,
+  status, verification state and activity counters; click a row for wallet,
+  transactions, commissions, ledger, notifications, audit events and rank
+  snapshots.
+- **Audit stream** — searchable/filterable audit log with actor, subject, IP,
+  plus recent business transactions and job runs.
+- **Demo data** — counts everything seeded by `DemoSeeder` (`@demo.test`
+  members and `DEMO-*` transactions) and lets the developer purge it by typing
+  `DELETE`. Real members are never touched. The same operation is available to
+  other administrators as the **Delete demo data** action in admin Settings.
 
 ## Configuration
 
@@ -107,6 +136,9 @@ GET  /api/admin/withdrawals     POST /api/admin/withdrawals/:id
 GET  /api/admin/rewards         POST /api/admin/rewards     POST /api/admin/reward-claims/:id
 GET  /api/admin/ranks           POST /api/admin/purchases   POST /api/admin/salary/run
 GET  /api/admin/report?format=csv|xlsx
+GET  /api/developer/overview    GET /api/developer/users   GET /api/developer/users/:id
+GET  /api/developer/activity    GET /api/developer/demo-data
+DELETE /api/developer/demo-data (body: { "confirm": "DELETE" })
 GET  /api/public/config         GET /api/public/referral/:code   POST /api/public/contact
 ```
 

@@ -131,20 +131,32 @@ export function createUser(input: {
   return findUserById(userId)!
 }
 
+const NOT_DEVELOPER = `NOT EXISTS (
+  SELECT 1 FROM user_roles ur_d JOIN roles r_d ON r_d.id = ur_d.role_id
+  WHERE ur_d.user_id = users.id AND r_d.name = 'developer'
+)`
+
+export function userHasRole(userId: number, role: string): boolean {
+  return !!db
+    .prepare('SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND r.name = ?')
+    .get(userId, role)
+}
+
 export function listMembers(limit = 50, offset = 0, search = '') {
   const like = `%${search.toLowerCase()}%`
   return db
     .prepare(
       `SELECT id, name, email, member_code, status, verification_status, sponsor_id, current_rank_id, created_at
        FROM users
-       WHERE (? = '' OR lower(name) LIKE ? OR lower(email) LIKE ? OR lower(member_code) LIKE ?)
+       WHERE ${NOT_DEVELOPER}
+         AND (? = '' OR lower(name) LIKE ? OR lower(email) LIKE ? OR lower(member_code) LIKE ?)
        ORDER BY id DESC LIMIT ? OFFSET ?`,
     )
     .all(search, like, like, like, limit, offset) as any[]
 }
 
 export function countMembers(): number {
-  return (db.prepare('SELECT COUNT(*) AS c FROM users').get() as { c: number }).c
+  return (db.prepare(`SELECT COUNT(*) AS c FROM users WHERE ${NOT_DEVELOPER}`).get() as { c: number }).c
 }
 
 export function countByStatus(status: string): number {

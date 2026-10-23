@@ -1,18 +1,54 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../../lib/api'
 import { usePageTitle } from '../../lib/usePageTitle'
-import { Table } from '../../components/Shell'
+import { useAuth, hasPermission } from '../../lib/auth'
+
+interface RankReportSnapshot {
+  id: number
+  member_id: number
+  rank_id: number | null
+  paid_rank_id: number | null
+  personal_volume: number
+  group_volume: number
+  direct_referrals: number | null
+  salary_eligible: number | boolean
+  member_name: string | null
+  member_code: string | null
+  rank_name: string | null
+}
+
+interface RankReportDistribution {
+  level: number
+  name: string
+  members_count: number
+}
+
+interface RankReportResponse {
+  period: string
+  qualifiedMembers: number
+  distribution: RankReportDistribution[]
+  snapshots: RankReportSnapshot[]
+}
 
 export default function RankReports() {
   usePageTitle('Rank reports')
-  const [data, setData] = useState<any>({ period: '', qualifiedMembers: 0, distribution: [], snapshots: [] })
+  const { user } = useAuth()
+  const [data, setData] = useState<RankReportResponse>({
+    period: '',
+    qualifiedMembers: 0,
+    distribution: [],
+    snapshots: [],
+  })
   const [periodInput, setPeriodInput] = useState('')
 
-  const load = (period?: string) => {
-    api.get('/admin/rank-reports', { params: period ? { period } : {} })
+  function load(period?: string) {
+    const params = period ? { period } : {}
+    api.get('/admin/rank-reports', { params })
       .then((res) => {
-        setData(res.data)
-        if (res.data?.period) setPeriodInput(res.data.period)
+        const report = res.data as RankReportResponse
+        setData(report)
+        if (report.period) setPeriodInput(report.period)
       })
       .catch(() => undefined)
   }
@@ -21,13 +57,14 @@ export default function RankReports() {
     load()
   }, [])
 
-  const handleLoad = (e: any) => {
+  async function handleLoad(e: React.FormEvent) {
     e.preventDefault()
     load(periodInput || undefined)
   }
 
-  const handleRecalculate = async (e: any) => {
+  async function handleRecalculate(e: React.FormEvent) {
     e.preventDefault()
+    if (!window.confirm(`Recalculate rank qualifications for ${data.period}?`)) return
     try {
       await api.post('/admin/rank-reports/recalculate', { period: data.period })
       load()
@@ -36,75 +73,36 @@ export default function RankReports() {
     }
   }
 
-  const head = [
-    'Member',
-    'Rank at period',
-    'Paid rank',
-    'Personal volume',
-    'Group volume',
-    'directs',
-    'Salary eligible',
-  ]
-
-  const snapshotRows: any[][] = (data.snapshots || []).map((snap: any) => [
-    <div key="member">
-      <a className="font-semibold text-navy-900 hover:text-accent-600" href={`/admin/members/${snap.member?.id ?? snap.member_id ?? ''}`}>
-        {snap.member?.name ?? '—'}
-      </a>
-      <p className="font-mono text-[11px] text-slate-400">{snap.member?.member_code ?? ''}</p>
-    </div>,
-    snap.rank?.name ?? 'Unranked',
-    snap.paid_rank_id ? String(snap.paid_rank_id) : '—',
-    snap.personal_volume !== undefined ? `$${Number(snap.personal_volume).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—',
-    snap.group_volume !== undefined ? `$${Number(snap.group_volume).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—',
-    snap.direct_referrals !== undefined ? String(snap.direct_referrals) : '—',
-    <span key="badge" className={`badge ${snap.salary_eligible ? 'badge-success' : 'badge-muted'}`}>
-      {snap.salary_eligible ? 'eligible' : 'no'}
-    </span>,
-  ])
-
-  const rows = snapshotRows.length === 0
-    ? [[
-        <span key="empty" className="text-slate-400">No snapshots for this period yet — run the recalculation.</span>,
-        '', '', '', '', '',
-      ]]
-    : snapshotRows
-
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="page-title">Rank reports</h1>
           <p className="section-sub">
-            Period: <span className="font-mono font-semibold text-navy-900">{data.period || '—'}</span> · {Number(data.qualifiedMembers ?? 0).toLocaleString('en-US')} members have earned a rank achievement.
+            Period: <span className="font-mono font-semibold text-navy-900">{data.period}</span> · {Number(data.qualifiedMembers ?? 0).toLocaleString('en-US')} members have earned a rank achievement.
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <form onSubmit={handleLoad} className="flex items-end gap-2">
             <div>
               <label className="label" htmlFor="period">Period</label>
-              <input
-                className="input"
-                type="month"
-                id="period"
-                name="period"
-                value={periodInput}
-                onChange={(e) => setPeriodInput(e.target.value)}
-              />
+              <input className="input" type="month" id="period" value={periodInput} onChange={(e) => setPeriodInput(e.target.value)} />
             </div>
             <button type="submit" className="btn btn-outline btn-sm">Load</button>
           </form>
-          <form onSubmit={handleRecalculate}>
-            <input type="hidden" name="period" value={data.period} />
-            <button type="submit" className="btn btn-accent btn-sm">Recalculate period</button>
-          </form>
+          {hasPermission(user, 'ranks.manage') && (
+            <form onSubmit={handleRecalculate}>
+              <input type="hidden" name="period" value={data.period} />
+              <button type="submit" className="btn btn-accent btn-sm">Recalculate period</button>
+            </form>
+          )}
           <p className="hint w-full">Loads snapshots for this month, format YYYY-MM.</p>
         </div>
       </div>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-3 xl:grid-cols-4">
-        {(data.distribution || []).map((rank: any, idx: number) => (
-          <div key={idx} className="stat-card">
+        {data.distribution.map((rank) => (
+          <div key={rank.level} className="stat-card">
             <span className="stat-label">Level {rank.level} · {rank.name}</span>
             <span className="stat-value">{Number(rank.members_count ?? 0).toLocaleString('en-US')}</span>
             <span className="text-xs text-slate-400">active members</span>
@@ -114,10 +112,46 @@ export default function RankReports() {
 
       <div className="mt-6 card overflow-hidden">
         <div className="border-b border-slate-100 px-5 py-4">
-          <h2 className="font-bold text-navy-900">Member snapshots for {data.period || '—'}</h2>
+          <h2 className="font-bold text-navy-900">Member snapshots for {data.period}</h2>
         </div>
         <div className="table-wrap">
-          <Table head={head} rows={rows} />
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Member</th>
+                <th>Rank at period</th>
+                <th className="text-right">Paid rank</th>
+                <th className="text-right">Personal volume</th>
+                <th className="text-right">Group volume</th>
+                <th className="text-right"> directs</th>
+                <th>Salary eligible</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.snapshots.length === 0 ? (
+                <tr><td colSpan={7} className="text-center text-slate-400">No snapshots for this period yet — run the recalculation.</td></tr>
+              ) : (
+                data.snapshots.map((snapshot) => (
+                  <tr key={snapshot.id}>
+                    <td>
+                      <Link className="font-semibold text-navy-900 hover:text-accent-600" to={`/admin/members/${snapshot.member_id}`}>
+                        {snapshot.member_name ?? '—'}
+                      </Link>
+                      <p className="font-mono text-[11px] text-slate-400">{snapshot.member_code}</p>
+                    </td>
+                    <td className="text-sm">{snapshot.rank_name ?? 'Unranked'}</td>
+                    <td className="text-right text-sm">{snapshot.paid_rank_id ?? '—'}</td>
+                    <td className="text-right money">${Number(snapshot.personal_volume ?? 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                    <td className="text-right money">${Number(snapshot.group_volume ?? 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}</td>
+                    <td className="text-right">{snapshot.direct_referrals ?? '—'}</td>
+                    <td>
+                      <span className={`badge ${snapshot.salary_eligible ? 'badge-success' : 'badge-muted'}`}>{snapshot.salary_eligible ? 'eligible' : 'no'}</span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </>

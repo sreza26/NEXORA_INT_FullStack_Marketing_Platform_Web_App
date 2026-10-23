@@ -90,6 +90,22 @@ function paginate<T>(items: T[], total: number, page: number, perPage: number) {
   }
 }
 
+/**
+ * SQL predicate that keeps developer accounts out of every member-facing
+ * listing. The developer account is staff tooling, not a platform member, and
+ * must stay invisible to non-developer administrators.
+ */
+const NOT_DEVELOPER_USER = `NOT EXISTS (
+  SELECT 1 FROM user_roles urd JOIN roles rd ON rd.id = urd.role_id
+  WHERE urd.user_id = u.id AND rd.name = 'developer'
+)`
+
+export function isDeveloperUser(userId: number): boolean {
+  return !!db
+    .prepare("SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND r.name = 'developer'")
+    .get(userId)
+}
+
 export function pageParams(page?: unknown, perPage?: unknown): { page: number; perPage: number } {
   const p = Math.max(1, num(page) || 1)
   const size = Math.min(Math.max(num(perPage) || 25, 1), 200)
@@ -113,16 +129,9 @@ export function sumOf(sql: string, ...params: unknown[]): number {
 export function walletTotals(): { balance: number; pending: number; credited: number; debited: number } {
   return {
     balance: sumOf('SELECT COALESCE(SUM(balance), 0) AS t FROM wallet_accounts'),
-    pending: sumOf(
-      `SELECT COALESCE(SUM(CASE WHEN direction = 'credit' THEN amount ELSE -amount END), 0) AS t
-       FROM ledger_entries WHERE status = 'pending'`,
-    ),
-    credited: sumOf(
-      `SELECT COALESCE(SUM(amount), 0) AS t FROM ledger_entries WHERE direction = 'credit' AND status <> 'reversed'`,
-    ),
-    debited: sumOf(
-      `SELECT COALESCE(SUM(amount), 0) AS t FROM ledger_entries WHERE direction = 'debit' AND status <> 'reversed'`,
-    ),
+    pending: sumOf('SELECT COALESCE(SUM(pending_balance), 0) AS t FROM wallet_accounts'),
+    credited: sumOf('SELECT COALESCE(SUM(lifetime_credited), 0) AS t FROM wallet_accounts'),
+    debited: sumOf('SELECT COALESCE(SUM(lifetime_debited), 0) AS t FROM wallet_accounts'),
   }
 }
 
@@ -145,13 +154,16 @@ export function monthlySeries(months = 6): { labels: string[]; registrations: nu
     const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`
     labels.push(key)
     registrations.push(
-      countRows('SELECT COUNT(*) AS c FROM users WHERE substr(COALESCE(registered_at, created_at), 1, 7) = ?', key),
+      countRows(
+        `SELECT COUNT(*) AS c FROM users u WHERE u.status = 'active' AND substr(u.registered_at, 1, 7) = ? AND ${NOT_DEVELOPER_USER}`,
+        key,
+      ),
     )
     volume.push(
       round2(
         sumOf(
           `SELECT COALESCE(SUM(eligible_amount), 0) AS t FROM business_transactions
-           WHERE substr(created_at, 1, 7) = ? AND status IN ('verified', 'approved')`,
+           WHERE substr(verified_at, 1, 7) = ? AND status IN ('verified', 'approved')`,
           key,
         ),
       ),
@@ -181,8 +193,12 @@ export function jobRunRows(limit = 10) {
 }
 
 export function platformSummary() {
-  const members = countRows(`SELECT COUNT(*) AS c FROM users WHERE status <> 'terminated'`)
-  const activeMembers = countRows(`SELECT COUNT(*) AS c FROM users WHERE status = 'active'`)
+  const notDeveloper = `NOT EXISTS (
+    SELECT 1 FROM user_roles urd JOIN roles rd ON rd.id = urd.role_id
+    WHERE urd.user_id = users.id AND rd.name = 'developer'
+  )`
+  const members = countRows(`SELECT COUNT(*) AS c FROM users WHERE status <> 'terminated' AND ${notDeveloper}`)
+  const activeMembers = countRows(`SELECT COUNT(*) AS c FROM users WHERE status = 'active' AND ${notDeveloper}`)
   const pending = pendingCounts()
   const series = monthlySeries(6)
 
@@ -205,7 +221,7 @@ export function platformSummary() {
 
 export function listMembersPage(input: { q?: string; status?: string; verification?: string; page?: number; perPage?: number }) {
   const { page, perPage } = pageParams(input.page, input.perPage)
-  const where: string[] = []
+  const where: string[] = [NOT_DEVELOPER_USER]
   const params: unknown[] = []
   const search = (input.q ?? '').trim()
 
@@ -299,6 +315,7 @@ export function memberDetail(id: number) {
       sponsor,
       rank_name: member.rank_name ?? null,
       profile,
+      is_developer: roles.includes('developer'),
     },
     directReferrals: direct,
     downlineCount,
@@ -389,11 +406,11 @@ export function deleteMember(id: number) {
 export function pendingVerifications() {
   const rows = db
     .prepare(
-      `SELECT u.id, u.name, u.email, u.member_code, u.phone, u.updated_at, u.created_at,
+      `SELECT u.id, u.name, u.email, u.member_code, u.phone, u.verification_status, u.updated_at, u.created_at,
               p.full_name, p.nid_number, p.country, p.city, p.nid_document_path, p.selfie_document_path
        FROM users u LEFT JOIN member_profiles p ON p.member_id = u.id
-       WHERE u.verification_status = 'pending'
-       ORDER BY u.updated_at DESC, u.id DESC`,
+       WHERE u.verification_status <> 'verified' AND u.status <> 'terminated' AND ${NOT_DEVELOPER_USER}
+       ORDER BY u.verification_status = 'pending' DESC, u.updated_at DESC, u.id DESC`,
     )
     .all() as unknown as Array<Record<string, unknown>>
 
@@ -404,12 +421,14 @@ export function pendingVerifications() {
 /* Roles                                                               */
 /* ------------------------------------------------------------------ */
 
-export function rolesOverview(search = '') {
+export function rolesOverview(search = '', includeDeveloper = false) {
   const roles = db
     .prepare(
       `SELECT r.id, r.name, r.label, r.description,
               (SELECT COUNT(*) FROM permission_role pr WHERE pr.role_id = r.id) AS permissions_count
-       FROM roles r ORDER BY r.name`,
+       FROM roles r
+       ${includeDeveloper ? '' : "WHERE r.name <> 'developer'"}
+       ORDER BY r.name`,
     )
     .all() as unknown as Array<Record<string, unknown>>
 
@@ -420,6 +439,7 @@ export function rolesOverview(search = '') {
               (SELECT GROUP_CONCAT(r.name) FROM roles r JOIN user_roles ur ON ur.role_id = r.id WHERE ur.user_id = u.id) AS role_names
        FROM users u
        WHERE (? = '' OR lower(u.name) LIKE ? OR lower(u.email) LIKE ?)
+         ${includeDeveloper ? '' : `AND ${NOT_DEVELOPER_USER}`}
        ORDER BY u.id DESC LIMIT 200`,
     )
     .all(search.trim(), like, like) as unknown as Array<Record<string, unknown>>
@@ -1712,3 +1732,138 @@ export function createPendingCommissions(
 ) {
   return generateCommissions(sourceMemberId, transactionId, amount, options)
 }
+
+/* ------------------------------------------------------------------ */
+/* Demo data                                                           */
+/* ------------------------------------------------------------------ */
+
+/** Every demo member created by `DemoSeeder` uses an `@demo.test` address. */
+const DEMO_USER_PREDICATE = `email LIKE '%@demo.test'`
+
+function placeholders(count: number): string {
+  return Array.from({ length: count }, () => '?').join(', ')
+}
+
+function demoUserIds(): number[] {
+  return (db.prepare(`SELECT id FROM users WHERE ${DEMO_USER_PREDICATE}`).all() as Array<{ id: number }>).map((row) => row.id)
+}
+
+function demoTransactionIds(): number[] {
+  return (
+    db
+      .prepare(
+        `SELECT id FROM business_transactions
+         WHERE reference LIKE 'DEMO-%'
+            OR member_id IN (SELECT id FROM users WHERE ${DEMO_USER_PREDICATE})`,
+      )
+      .all() as Array<{ id: number }>
+  ).map((row) => row.id)
+}
+
+function countIn(table: string, column: string, ids: number[]): number {
+  if (ids.length === 0) return 0
+  return countRows(`SELECT COUNT(*) AS c FROM ${table} WHERE ${column} IN (${placeholders(ids.length)})`, ...ids)
+}
+
+export function demoDataReport() {
+  const users = demoUserIds()
+  const transactions = demoTransactionIds()
+
+  const report = {
+    demo: users.length > 0 || transactions.length > 0,
+    users: users.length,
+    transactions: transactions.length,
+    wallet_accounts: countIn('wallet_accounts', 'member_id', users),
+    member_profiles: countIn('member_profiles', 'member_id', users),
+    commissions: transactions.length
+      ? countRows(
+          `SELECT COUNT(*) AS c FROM commissions
+           WHERE source_member_id IN (${placeholders(users.length || 1)})
+              OR source_transaction_id IN (${placeholders(transactions.length)})`,
+          ...(users.length ? users : [-1]),
+          ...transactions,
+        )
+      : countIn('commissions', 'source_member_id', users),
+    ledger_entries: countIn('ledger_entries', 'member_id', users),
+    deposits: countIn('deposits', 'member_id', users),
+    withdrawal_requests: countIn('withdrawal_requests', 'member_id', users),
+    reward_claims: countIn('reward_claims', 'member_id', users),
+    salary_payouts: countIn('salary_payouts', 'member_id', users),
+    notifications: countIn('notifications', 'member_id', users),
+    referral_closures: countIn('referral_closures', 'ancestor_id', users),
+    rank_achievements: countIn('rank_achievements', 'member_id', users),
+    member_rank_snapshots: countIn('member_rank_snapshots', 'member_id', users),
+    reconciliation_records: countIn('reconciliation_records', 'member_id', users),
+    referral_edges: countIn('referral_edges', 'member_id', users),
+  }
+
+  return report
+}
+
+/**
+ * Remove the seeded demo network (the `@demo.test` members and the synthetic
+ * `DEMO-*` business transactions) together with every dependent record.
+ */
+export function deleteDemoData() {
+  const users = demoUserIds()
+  const transactions = demoTransactionIds()
+  const report = demoDataReport()
+
+  if (users.length === 0 && transactions.length === 0) {
+    return { deleted: false, ...report }
+  }
+
+  db.exec('BEGIN')
+  try {
+    if (transactions.length) {
+      const ph = placeholders(transactions.length)
+      db.prepare(`DELETE FROM commissions WHERE source_transaction_id IN (${ph})`).run(...transactions)
+    }
+    if (users.length) {
+      const ph = placeholders(users.length)
+      for (const table of [
+        'commissions',
+        'ledger_entries',
+        'deposits',
+        'withdrawal_requests',
+        'reward_claims',
+        'salary_payouts',
+        'notifications',
+        'rank_achievements',
+        'member_rank_snapshots',
+        'reconciliation_records',
+        'referral_edges',
+        'referral_closures',
+        'wallet_accounts',
+        'member_profiles',
+        'email_verification_tokens',
+        'permission_user',
+        'user_roles',
+      ]) {
+        const column = table === 'referral_closures' ? 'ancestor_id' : table === 'permission_user' ? 'user_id' : table === 'user_roles' ? 'user_id' : table === 'email_verification_tokens' ? 'user_id' : 'member_id'
+        db.prepare(`DELETE FROM ${table} WHERE ${column} IN (${ph})`).run(...users)
+      }
+      db.prepare(`DELETE FROM referral_closures WHERE descendant_id IN (${ph})`).run(...users)
+      db.prepare(`DELETE FROM referral_edges WHERE sponsor_id IN (${ph})`).run(...users)
+      db.prepare(`DELETE FROM business_transactions WHERE member_id IN (${ph})`).run(...users)
+      db.prepare(`DELETE FROM users WHERE id IN (${ph})`).run(...users)
+    }
+    if (transactions.length) {
+      const ph = placeholders(transactions.length)
+      db.prepare(`DELETE FROM business_transactions WHERE id IN (${ph})`).run(...transactions)
+    }
+    db.exec('COMMIT')
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+
+  try {
+    rebuildAllReferralClosures()
+  } catch {
+    // Closure rebuild is best-effort; the rows are already gone.
+  }
+
+  return { deleted: true, ...report }
+}
+

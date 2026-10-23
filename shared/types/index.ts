@@ -1,4 +1,10 @@
-export type UserRole = 'member' | 'super_admin' | 'finance_admin' | 'compliance_officer' | 'support_agent';
+export type UserRole =
+  | 'member'
+  | 'developer'
+  | 'super_admin'
+  | 'finance_admin'
+  | 'compliance_officer'
+  | 'support_agent';
 
 export type UserStatus = 'pending' | 'active' | 'suspended';
 

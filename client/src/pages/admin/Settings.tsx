@@ -1,3 +1,4 @@
+import { Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import { usePageTitle } from '../../lib/usePageTitle'
@@ -15,12 +16,23 @@ type SettingsData = {
   rawConfig: Record<string, string | boolean | number>
 }
 
+type DemoReport = {
+  demo: boolean
+  users: number
+  transactions: number
+  [key: string]: number | boolean
+}
+
 const EMPTY: SettingsData = { toggles: [], rawConfig: {} }
 
 export default function Settings() {
   usePageTitle('Settings')
   const [data, setData] = useState<SettingsData>(EMPTY)
   const [saving, setSaving] = useState<string | null>(null)
+  const [demo, setDemo] = useState<DemoReport | null>(null)
+  const [confirm, setConfirm] = useState('')
+  const [demoMessage, setDemoMessage] = useState('')
+  const [purging, setPurging] = useState(false)
 
   const load = useCallback(() => {
     return api
@@ -35,9 +47,32 @@ export default function Settings() {
       .catch(() => undefined)
   }, [])
 
+  const loadDemo = useCallback(() => {
+    return api
+      .get('/admin/demo-data')
+      .then((res) => setDemo(res.data as DemoReport))
+      .catch(() => setDemo(null))
+  }, [])
+
   useEffect(() => {
     load()
-  }, [load])
+    loadDemo()
+  }, [load, loadDemo])
+
+  const purgeDemo = async () => {
+    setPurging(true)
+    setDemoMessage('')
+    try {
+      const res = await api.delete('/admin/demo-data', { data: { confirm } })
+      setDemoMessage(res.data?.deleted ? 'Demo data deleted.' : 'No demo data found.')
+      setConfirm('')
+      await loadDemo()
+    } catch (error: any) {
+      setDemoMessage(error.response?.data?.message ?? 'Unable to delete demo data.')
+    } finally {
+      setPurging(false)
+    }
+  }
 
   /**
    * The admin settings endpoint is `PUT /api/admin/settings` and expects a
@@ -48,10 +83,6 @@ export default function Settings() {
     setSaving(key)
     try {
       await api.put('/admin/settings', { [key]: enabled ? '1' : '0' })
-      setData((prev) => ({
-        ...prev,
-        toggles: prev.toggles.map((toggle) => (toggle.key === key ? { ...toggle, enabled } : toggle)),
-      }))
       await load()
     } catch {
       await load()
@@ -131,7 +162,12 @@ export default function Settings() {
                   aria-label={`Toggle ${toggle.label}`}
                   checked={toggle.enabled}
                   disabled={saving === toggle.key}
-                  onChange={(e) => handleUpdate(toggle.key, e.target.checked)}
+                  onChange={(e) =>
+                    setData((prev) => ({
+                      ...prev,
+                      toggles: prev.toggles.map((t) => (t.key === toggle.key ? { ...t, enabled: e.target.checked } : t)),
+                    }))
+                  }
                 />
                 <button
                   type="button"
@@ -144,6 +180,55 @@ export default function Settings() {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div className="card card-pad mt-6">
+        <div className="flex items-start gap-3">
+          <Trash2 className="mt-0.5 h-5 w-5 text-rose-500" />
+          <div className="min-w-0 flex-1">
+            <h2 className="font-bold text-navy-900">Demo data</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Removes the seeded <span className="font-mono text-xs">@demo.test</span> members, their network, wallets,
+              profiles and the synthetic <span className="font-mono text-xs">DEMO-*</span> business transactions. Real
+              members are untouched. Developers can also do this from the system debug panel.
+            </p>
+
+            {demoMessage && <p className="flash-ok mt-3">{demoMessage}</p>}
+
+            <div className="mt-3 flex flex-wrap gap-4 text-sm text-slate-600">
+              <span>
+                Demo members: <span className="font-semibold text-navy-900">{demo?.users ?? 0}</span>
+              </span>
+              <span>
+                Demo transactions: <span className="font-semibold text-navy-900">{demo?.transactions ?? 0}</span>
+              </span>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-end gap-3">
+              <div className="min-w-56 flex-1">
+                <label className="label" htmlFor="demo-confirm">
+                  Type DELETE to confirm
+                </label>
+                <input
+                  id="demo-confirm"
+                  className="input"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  placeholder="DELETE"
+                />
+              </div>
+              <button
+                type="button"
+                className="btn btn-danger btn-sm"
+                disabled={purging || confirm !== 'DELETE' || !demo?.demo}
+                onClick={purgeDemo}
+              >
+                <Trash2 className="h-4 w-4" /> {purging ? 'Deleting…' : 'Delete demo data'}
+              </button>
+            </div>
+            {demo && !demo.demo && <p className="hint">No demo data is present.</p>}
+          </div>
         </div>
       </div>
     </>

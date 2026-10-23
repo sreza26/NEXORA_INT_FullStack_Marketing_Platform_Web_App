@@ -273,6 +273,26 @@ CREATE TABLE IF NOT EXISTS referral_closures (
 );
 CREATE INDEX IF NOT EXISTS idx_referral_closures_descendant ON referral_closures(descendant_id);
 
+CREATE TABLE IF NOT EXISTS referral_edges (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sponsor_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  member_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  depth INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS salary_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  rank_id INTEGER NOT NULL REFERENCES ranks(id) ON DELETE CASCADE,
+  amount REAL NOT NULL DEFAULT 0,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  is_active INTEGER NOT NULL DEFAULT 1,
+  period_type TEXT NOT NULL DEFAULT 'monthly',
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS salary_periods (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   period TEXT NOT NULL UNIQUE,
@@ -451,6 +471,37 @@ const COLUMN_MIGRATIONS: Array<[string, string, string, string?]> = [
   ['audit_logs', 'user_agent', 'TEXT'],
   ['audit_logs', 'auditable_type', 'TEXT'],
   ['audit_logs', 'auditable_id', 'INTEGER'],
+  ['audit_logs', 'updated_at', 'TEXT'],
+  ['rewards', 'code', 'TEXT'],
+  ['rewards', 'claimed_count', 'INTEGER', '0'],
+  ['rewards', 'eligibility_from', 'TEXT'],
+  ['rewards', 'eligibility_to', 'TEXT'],
+  ['rewards', 'config', 'TEXT'],
+  ['rewards', 'updated_at', 'TEXT'],
+  ['business_transactions', 'currency', "TEXT DEFAULT 'USD'"],
+  ['business_transactions', 'verified_by', 'INTEGER'],
+  ['business_transactions', 'commissioned_by_job_run_id', 'INTEGER'],
+  ['business_transactions', 'commissioned_at', 'TEXT'],
+  ['business_transactions', 'reversal_of_id', 'INTEGER'],
+  ['business_transactions', 'notes', 'TEXT'],
+  ['business_transactions', 'updated_at', 'TEXT'],
+  ['wallet_accounts', 'status', "TEXT DEFAULT 'active'"],
+  ['wallet_accounts', 'last_reconciled_at', 'TEXT'],
+  ['rank_requirements', 'target_rank_id', 'INTEGER'],
+  ['rank_requirements', 'period', "TEXT DEFAULT 'monthly'"],
+  ['rank_requirements', 'require_separate_branches', 'INTEGER', '0'],
+  ['rank_requirements', 'created_at', 'TEXT'],
+  ['rank_requirements', 'updated_at', 'TEXT'],
+  ['member_profiles', 'date_of_birth', 'TEXT'],
+  ['member_profiles', 'referral_source', 'TEXT'],
+  ['member_profiles', 'meta', 'TEXT'],
+  ['application_settings', 'is_secret', 'INTEGER', '0'],
+  ['compensation_plans', 'eligibility_requirements', 'TEXT'],
+  ['compensation_plans', 'updated_at', 'TEXT'],
+  ['ranks', 'description', 'TEXT'],
+  ['ranks', 'sort_order', 'INTEGER', '0'],
+  ['users', 'remember_token', 'TEXT'],
+  ['referral_closures', 'created_at', 'TEXT'],
 ]
 
 function applyColumnMigrations(): void {

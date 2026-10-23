@@ -24,11 +24,12 @@ export function ensurePermissionCatalogue(): void {
  * Permissions held by a user, combining direct grants (`permission_user`)
  * with grants inherited through their roles (`permission_role`).
  *
- * `super_admin` bypasses every check, mirroring `HasRoles::hasPermission()`
- * and the `Gate::before()` hook of the Laravel reference implementation.
+ * `super_admin` and `developer` bypass every check, mirroring
+ * `HasRoles::hasPermission()` and the `Gate::before()` hook of the Laravel
+ * reference implementation.
  */
 export function loadUserPermissions(userId: number, roles: string[] = []): string[] {
-  if (roles.includes('super_admin')) return [...ALL_PERMISSION_NAMES]
+  if (roles.includes('super_admin') || roles.includes('developer')) return [...ALL_PERMISSION_NAMES]
 
   const rows = db
     .prepare(

@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom'
+import { Link, Outlet } from 'react-router-dom'
 import {
   ArrowDownToLine,
   ArrowLeftRight,
@@ -19,13 +19,14 @@ import {
   ScrollText,
   Settings,
   Shield,
+  Terminal,
   TicketCheck,
   Trophy,
   UserRound,
   Users,
 } from 'lucide-react'
 import { Shell, type NavGroup } from '../../components/Shell'
-import { useAuth } from '../../lib/auth'
+import { hasPermission, isDeveloper as isDeveloperAccount, useAuth } from '../../lib/auth'
 import { useBodyClass } from '../../lib/useBodyClass'
 
 const NAV: NavGroup[] = [
@@ -159,15 +160,44 @@ const NAV: NavGroup[] = [
 export default function AdminLayout() {
   useBodyClass('bg-surface')
   const { user } = useAuth()
+  const developer = isDeveloperAccount(user)
+
+  const nav: NavGroup[] = developer
+    ? [
+        ...NAV,
+        {
+          heading: 'Developer',
+          items: [
+            {
+              to: '/developer',
+              label: 'System Debug Panel',
+              icon: <Terminal className="h-4 w-4 shrink-0" />,
+              end: true,
+            },
+          ],
+        },
+      ]
+    : NAV
 
   const roleLabels = user?.role_labels?.join(', ') || user?.role || 'Staff'
 
+  const headerActions = hasPermission(user, 'members.verify_identity') && (
+    <Link
+      to="/admin/verifications"
+      className="hidden rounded-lg p-2 text-slate-500 hover:bg-slate-100 sm:block"
+      aria-label="Pending verifications"
+    >
+      <BadgeCheck className="h-5 w-5" />
+    </Link>
+  )
+
   return (
     <Shell
-      groups={NAV}
+      groups={nav}
       variant="admin"
       account={user}
       subtitle={roleLabels}
+      headerActions={headerActions}
       footerLinks={[{ to: '/member', label: 'Member portal', icon: <UserRound className="h-4 w-4 shrink-0" /> }]}
     >
       <Outlet />

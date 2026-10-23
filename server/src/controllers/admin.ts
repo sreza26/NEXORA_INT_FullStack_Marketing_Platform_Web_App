@@ -14,11 +14,28 @@ function getAdminId(req: Request): number {
   return req.user!.id
 }
 
+function isDeveloper(req: Request): boolean {
+  return (req.user?.roles ?? []).includes('developer')
+}
+
+/**
+ * Developer accounts are staff tooling: only another developer may open or
+ * mutate them. Everyone else gets a 404 so the account stays invisible.
+ */
+function assertTargetVisible(req: Request, id: number): void {
+  if (!isDeveloper(req) && svc.isDeveloperUser(id)) {
+    throw new HttpError(404, 'Member not found')
+  }
+}
+
 export function summary(_req: Request, res: Response) {
+  const notDeveloper = `NOT EXISTS (SELECT 1 FROM user_roles urd JOIN roles rd ON rd.id = urd.role_id WHERE urd.user_id = users.id AND rd.name = 'developer')`
   const base = {
     total_members: countMembers(),
-    active_members: svc.countRows(`SELECT COUNT(*) AS c FROM users WHERE status = 'active'`),
-    verified_members: svc.countRows(`SELECT COUNT(*) AS c FROM users WHERE verification_status = 'verified'`),
+    active_members: svc.countRows(`SELECT COUNT(*) AS c FROM users WHERE status = 'active' AND ${notDeveloper}`),
+    verified_members: svc.countRows(
+      `SELECT COUNT(*) AS c FROM users WHERE verification_status = 'verified' AND ${notDeveloper}`,
+    ),
     pending_withdrawals: withdrawalCount('pending'),
     approved_withdrawal_total: approvedTotal(),
     paid_commission_total: totalPaidCommission(),
@@ -40,6 +57,7 @@ export function members(req: Request, res: Response) {
 
 export function memberShow(req: Request, res: Response) {
   const id = Number(req.params.id)
+  assertTargetVisible(req, id)
   const detail = svc.memberDetail(id)
   if (!detail) throw new HttpError(404, 'Member not found')
   res.json(detail)
@@ -56,10 +74,16 @@ export function updateMember(req: Request, res: Response) {
     city: z.string().optional().nullable(),
     address_line: z.string().optional().nullable(),
     emergency_contact: z.string().optional().nullable(),
-    roles: z.array(z.enum(['member', 'super_admin', 'finance_admin', 'compliance_officer', 'support_agent'])).optional(),
+    roles: z
+      .array(z.enum(['member', 'developer', 'super_admin', 'finance_admin', 'compliance_officer', 'support_agent']))
+      .optional(),
   })
   const data = schema.parse(req.body)
   const id = Number(req.params.id)
+  assertTargetVisible(req, id)
+  if (data.roles?.includes('developer') && !isDeveloper(req)) {
+    throw new HttpError(403, 'You do not have permission to perform this action.')
+  }
 
   if (data.status || data.name || data.email || data.phone || data.country || data.city || data.address_line || data.emergency_contact) {
     const result = svc.updateMemberDetails(id, {
@@ -90,6 +114,7 @@ export function updateMember(req: Request, res: Response) {
 
 export function deleteMember(req: Request, res: Response) {
   const id = Number(req.params.id)
+  assertTargetVisible(req, id)
   const removed = svc.deleteMember(id)
   if (!removed) throw new HttpError(404, 'Member not found')
   svc.recordAudit(getAdminId(req), 'member.deleted', 'user', id, removed, req.ip)
@@ -98,6 +123,7 @@ export function deleteMember(req: Request, res: Response) {
 
 export function memberVerify(req: Request, res: Response) {
   const id = Number(req.params.id)
+  assertTargetVisible(req, id)
   const schema = z.object({
     decision: z.enum(['verified', 'rejected']).optional().default('verified'),
     note: z.string().optional().nullable(),
@@ -110,6 +136,7 @@ export function memberVerify(req: Request, res: Response) {
 
 export function memberSuspend(req: Request, res: Response) {
   const id = Number(req.params.id)
+  assertTargetVisible(req, id)
   const schema = z.object({ reason: z.string().optional() })
   const data = schema.parse(req.body)
   svc.suspendMember(id, data.reason ?? 'Suspended by admin')
@@ -119,6 +146,7 @@ export function memberSuspend(req: Request, res: Response) {
 
 export function memberActivate(req: Request, res: Response) {
   const id = Number(req.params.id)
+  assertTargetVisible(req, id)
   svc.activateMember(id)
   svc.recordAudit(getAdminId(req), 'member.activated', 'user', id, {}, req.ip)
   res.json({ success: true })
@@ -126,10 +154,26 @@ export function memberActivate(req: Request, res: Response) {
 
 export function memberSponsor(req: Request, res: Response) {
   const id = Number(req.params.id)
-  const schema = z.object({ sponsor_id: z.coerce.number().int().positive() })
+  assertTargetVisible(req, id)
+  const schema = z.object({
+    sponsor_id: z.coerce.number().int().positive().optional(),
+    sponsor_code: z.string().optional(),
+    reason: z.string().optional(),
+  })
   const data = schema.parse(req.body)
-  svc.changeSponsor(id, data.sponsor_id)
-  svc.recordAudit(getAdminId(req), 'member.sponsor.changed', 'user', id, data, req.ip)
+
+  let sponsorId = data.sponsor_id
+  if (!sponsorId && data.sponsor_code) {
+    const sponsor = db
+      .prepare('SELECT id FROM users WHERE member_code = ?')
+      .get(data.sponsor_code.trim().toUpperCase()) as { id: number } | undefined
+    if (!sponsor) throw new HttpError(404, 'Sponsor not found')
+    sponsorId = sponsor.id
+  }
+  if (!sponsorId) throw new HttpError(422, 'sponsor_code is required')
+
+  svc.changeSponsor(id, sponsorId)
+  svc.recordAudit(getAdminId(req), 'member.sponsor.changed', 'user', id, { ...data, sponsor_id: sponsorId }, req.ip)
   res.json({ success: true })
 }
 
@@ -137,15 +181,35 @@ export function verifications(_req: Request, res: Response) {
   res.json(svc.pendingVerifications())
 }
 
+export function demoDataStatus(_req: Request, res: Response) {
+  res.json(svc.demoDataReport())
+}
+
+export function purgeDemoData(req: Request, res: Response) {
+  const schema = z.object({ confirm: z.literal('DELETE') })
+  schema.parse(req.body ?? {})
+  const result = svc.deleteDemoData()
+  if (result.deleted) {
+    svc.recordAudit(getAdminId(req), 'demo_data.deleted', 'system', null, result, req.ip)
+  }
+  res.json(result)
+}
+
 export function roles(req: Request, res: Response) {
   const search = String(req.query.q ?? '')
-  res.json(svc.rolesOverview(search))
+  res.json(svc.rolesOverview(search, isDeveloper(req)))
 }
 
 export function assignRole(req: Request, res: Response) {
   const userId = Number(req.params.user)
-  const schema = z.object({ role: z.string() })
+  const schema = z.object({
+    role: z.enum(['member', 'developer', 'super_admin', 'finance_admin', 'compliance_officer', 'support_agent']),
+  })
   const data = schema.parse(req.body)
+  assertTargetVisible(req, userId)
+  if (data.role === 'developer' && !isDeveloper(req)) {
+    throw new HttpError(403, 'You do not have permission to perform this action.')
+  }
   const ok = svc.assignRole(userId, data.role)
   if (!ok) throw new HttpError(400, 'Invalid role')
   svc.recordAudit(getAdminId(req), 'role.assigned', 'user', userId, data, req.ip)

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import { usePageTitle } from '../../lib/usePageTitle'
+import { useAuth, hasPermission } from '../../lib/auth'
 
 export default function Ranks() {
   usePageTitle('Rank configuration')
+  const { user } = useAuth()
   const [ranks, setRanks] = useState<any[]>([])
 
   useEffect(() => {
@@ -31,14 +33,14 @@ export default function Ranks() {
 
       <div className="mt-6 space-y-4">
         {ranks.map((rank) => (
-          <RankCard key={rank.id} rank={rank} onSave={handleSave} />
+          <RankCard key={rank.id} rank={rank} canManage={hasPermission(user, 'ranks.manage')} onSave={handleSave} />
         ))}
       </div>
     </>
   )
 }
 
-function RankCard({ rank, onSave }: { rank: any; onSave: (rank: any, salary: string, active: boolean) => void }) {
+function RankCard({ rank, canManage, onSave }: { rank: any; canManage: boolean; onSave: (rank: any, salary: string, active: boolean) => void }) {
   const [salary, setSalary] = useState(String(rank.monthly_salary ?? ''))
   const [active, setActive] = useState(Boolean(rank.is_active))
 
@@ -64,7 +66,7 @@ function RankCard({ rank, onSave }: { rank: any; onSave: (rank: any, salary: str
                 {rank.requirements.map((req: any, idx: number) => (
                   <li key={idx} className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-navy-900">
                     {req.metric ?? req.type} {req.operator ?? ''} {Number(req.value ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    {req.targetRank ? ` · target: ${req.targetRank.name}` : ''}
+                    {req.target_rank ? ` · target: ${req.target_rank}` : ''}
                   </li>
                 ))}
               </ul>
@@ -72,6 +74,7 @@ function RankCard({ rank, onSave }: { rank: any; onSave: (rank: any, salary: str
           </div>
         </div>
 
+        {canManage && (
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -108,6 +111,7 @@ function RankCard({ rank, onSave }: { rank: any; onSave: (rank: any, salary: str
           <p className="hint w-full">Amount paid to the member each month while they hold this rank.</p>
           <p className="hint w-full">Inactive ranks are excluded from salary and rank calculations.</p>
         </form>
+        )}
       </div>
     </div>
   )

@@ -10,6 +10,7 @@
     "start": "node dist/server.js",
     "db:reset": "tsx scripts/reset-db.ts",
     "db:seed": "tsx scripts/seed.ts",
+    "db:import-laravel": "tsx scripts/import-laravel.ts",
     "test": "tsx scripts/smoke-test.ts"
   },
   "dependencies": {

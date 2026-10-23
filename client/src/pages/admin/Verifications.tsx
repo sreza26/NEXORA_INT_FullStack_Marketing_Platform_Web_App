@@ -10,6 +10,7 @@ interface VerificationRow {
   email: string
   member_code: string
   phone: string | null
+  verification_status: string
   updated_at: string
   full_name: string | null
   nid_number: string | null
@@ -17,6 +18,12 @@ interface VerificationRow {
   city: string | null
   nid_document_path: string | null
   selfie_document_path: string | null
+}
+
+function statusBadgeClass(status: string): string {
+  if (status === 'pending') return 'badge-warn'
+  if (status === 'rejected') return 'badge-danger'
+  return 'badge-muted'
 }
 
 export default function Verifications() {
@@ -55,7 +62,7 @@ export default function Verifications() {
     <>
       <div>
         <h1 className="page-title">Identity verification queue</h1>
-        <p className="section-sub">Members awaiting KYC review. Documents are served through an authorized download route.</p>
+        <p className="section-sub">Members without a verified identity. Documents are served through an authorized download route.</p>
       </div>
 
       {message && <p className="flash-ok mt-4">{message}</p>}
@@ -63,7 +70,7 @@ export default function Verifications() {
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         {items.length === 0 ? (
           <div className="card card-pad text-center text-sm text-slate-400 lg:col-span-2">
-            No pending identity verifications. The queue is clear.
+            No unverified members. Every member identity has been reviewed.
           </div>
         ) : (
           items.map((member) => (
@@ -75,7 +82,9 @@ export default function Verifications() {
                     {member.member_code} · {member.email}
                   </p>
                 </div>
-                <span className="badge badge-warn">pending</span>
+                <span className={`badge ${statusBadgeClass(member.verification_status)}`}>
+                  {member.verification_status}
+                </span>
               </div>
 
               <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">

