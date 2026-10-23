@@ -34,7 +34,7 @@ export function errorHandler(error: unknown, _req: Request, res: Response, _next
   }
 
   if (error instanceof ZodError) {
-    res.status(422).json({ message: error.errors[0]?.message ?? 'Validation failed', errors: error.errors })
+    res.status(422).json({ message: error.issues[0]?.message ?? 'Validation failed', errors: error.issues })
     return
   }
 

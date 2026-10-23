@@ -14,7 +14,7 @@ full-stack application:
 dev.bat        :: install dependencies if needed, then run API (5000) + client (5173)
 ```
 
-Open <http://localhost:5000>. The client only starts after the API health check
+Open <http://localhost:5173>. The client only starts after the API health check
 passes, so login requests cannot hit a closed port while the server is still
 migrating.
 
