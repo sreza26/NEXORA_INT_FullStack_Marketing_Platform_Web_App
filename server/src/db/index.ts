@@ -17,6 +17,9 @@ export function getPool(): Pool {
       waitForConnections: true,
       connectionLimit: config.db.poolLimit,
       queueLimit: 0,
+      connectTimeout: 15_000,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 0,
       charset: 'utf8mb4',
       dateStrings: true,
       decimalNumbers: true,
@@ -732,13 +735,50 @@ async function applyColumnMigrations(): Promise<void> {
   )
 }
 
-export async function migrate(): Promise<void> {
+function isTransientDbError(error: unknown): boolean {
+  const code = (error as { code?: string })?.code ?? ''
+  return [
+    'ECONNRESET',
+    'ECONNREFUSED',
+    'ETIMEDOUT',
+    'EPIPE',
+    'PROTOCOL_CONNECTION_LOST',
+    'ER_CON_COUNT_ERROR',
+  ].includes(code)
+}
+
+async function withRetry<T>(label: string, fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error
+      if (!isTransientDbError(error) || attempt === attempts) throw error
+      console.warn(`[nexora] ${label} failed (${(error as { code?: string }).code}); retrying ${attempt}/${attempts - 1}`)
+      await new Promise((resolve) => setTimeout(resolve, 750 * attempt))
+    }
+  }
+  throw lastError
+}
+
+async function applySchema(): Promise<void> {
+  const tables = await db.query<{ table_name: string }>(
+    `SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()`,
+  )
+  const existing = new Set(tables.map((row) => row.table_name.toLowerCase()))
+
   const connection = await getPool().getConnection()
+  let broken = false
   try {
     await connection.query('SET FOREIGN_KEY_CHECKS = 0')
     for (const statement of convertSchema(SCHEMA).split(';')) {
       const sql = statement.trim()
       if (!sql) continue
+
+      const tableMatch = /^CREATE TABLE IF NOT EXISTS\s+`?(\w+)`?/i.exec(sql)
+      if (tableMatch && existing.has(tableMatch[1].toLowerCase())) continue
+
       try {
         await connection.query(sql)
       } catch (error) {
@@ -747,11 +787,18 @@ export async function migrate(): Promise<void> {
       }
     }
     await connection.query('SET FOREIGN_KEY_CHECKS = 1')
+  } catch (error) {
+    broken = isTransientDbError(error)
+    throw error
   } finally {
-    connection.release()
+    if (broken) connection.destroy()
+    else connection.release()
   }
+}
 
-  await applyColumnMigrations()
+export async function migrate(): Promise<void> {
+  await withRetry('schema migration', applySchema)
+  await withRetry('column migration', applyColumnMigrations)
 }
 
 export async function tableExists(table: string): Promise<boolean> {

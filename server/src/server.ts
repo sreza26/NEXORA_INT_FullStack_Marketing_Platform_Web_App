@@ -1,9 +1,8 @@
 import { createApp } from './app.js'
 import { config } from './config/index.js'
-import { migrate, serverPaths } from './db/index.js'
+import { serverPaths } from './db/index.js'
 import { seed } from './db/seed.js'
 
-await migrate()
 await seed()
 
 const app = createApp()

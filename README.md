@@ -11,12 +11,12 @@ full-stack application:
 ## Quick start
 
 ```bat
-install.bat    :: install dependencies
-seed.bat       :: create and seed the database
-dev.bat        :: run API (5000) + client (5173)
+dev.bat        :: install dependencies if needed, then run API (5000) + client (5173)
 ```
 
-Open <http://localhost:5173>.
+Open <http://localhost:5173>. The client only starts after the API health check
+passes, so login requests cannot hit a closed port while the server is still
+migrating.
 
 The database tables, ranks, compensation plan, roles/permissions and demo
 accounts are created automatically on first boot. You can also run them
@@ -38,8 +38,8 @@ start.bat      :: serve the built app on http://localhost:5000
 
 Verify the API end to end:
 
-```bat
-test.bat
+```bash
+npm test --workspace=server
 ```
 
 ## Demo accounts

@@ -310,7 +310,22 @@ export async function seedSettings() {
   }
 }
 
+const SCHEMA_VERSION = '1'
+
+async function schemaVersion(): Promise<string | null> {
+  try {
+    const row = (await db
+      .prepare("SELECT value FROM application_settings WHERE key = 'system.schema_version'")
+      .get()) as { value: string } | undefined
+    return row?.value ?? null
+  } catch {
+    return null
+  }
+}
+
 export async function seed() {
+  if ((await schemaVersion()) === SCHEMA_VERSION) return
+
   await migrate()
   await ensureColumn('member_profiles', 'full_name', 'TEXT')
   await ensureColumn('member_profiles', 'nid_number', 'TEXT')
@@ -338,6 +353,14 @@ export async function seed() {
   }
 
   await seedDeveloper()
+
+  await db
+    .prepare(
+      `INSERT INTO application_settings (key, value, group_name, type)
+       VALUES ('system.schema_version', ?, 'system', 'string')
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    )
+    .run(SCHEMA_VERSION)
 }
 
 export async function seedMemberExtras() {
