@@ -54,6 +54,9 @@ const TABLES = [
 
 await migrate()
 
+// Disable foreign key checks so we can delete rows in any order
+await db.exec('SET FOREIGN_KEY_CHECKS = 0')
+
 let rehashed = 0
 
 try {
@@ -442,6 +445,8 @@ try {
 } catch (error) {
   throw error
 }
+
+await db.exec('SET FOREIGN_KEY_CHECKS = 1')
 
 const CHECKS: Array<[string, string]> = [
   ['users', 'users'],

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { config } from '../config/index.js'
 import { HttpError } from '../middlewares/error.js'
 import { signToken } from '../middlewares/auth.js'
-import { createUser, findUserByCode, findUserByEmail, findUserById, hashPassword, verifyPassword } from '../models/user.js'
+import { createUser, findUserByCode, findUserByEmail, findUserById, hashPassword, verifyPassword, type UserWithRoles } from '../models/user.js'
 import { db } from '../db/index.js'
 
 const registerSchema = z.object({
@@ -20,8 +20,7 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 })
 
-async function publicUser(id: number) {
-  const user = (await findUserById(id))!
+function serializeUser(user: UserWithRoles) {
   return {
     id: user.id,
     name: user.name,
@@ -39,6 +38,10 @@ async function publicUser(id: number) {
     created_at: user.created_at,
     updated_at: user.updated_at,
   }
+}
+
+async function publicUser(id: number) {
+  return serializeUser((await findUserById(id))!)
 }
 
 export async function register(req: Request, res: Response) {
@@ -87,7 +90,7 @@ export async function register(req: Request, res: Response) {
     status: user.status,
   })
 
-  res.status(201).json({ token, user: await publicUser(user.id) })
+  res.status(201).json({ token, user: serializeUser(user) })
 }
 
 export async function login(req: Request, res: Response) {
@@ -111,7 +114,7 @@ export async function login(req: Request, res: Response) {
     status: user.status,
   })
 
-  res.json({ token, user: await publicUser(user.id) })
+  res.json({ token, user: serializeUser(user) })
 }
 
 export async function me(req: Request, res: Response) {

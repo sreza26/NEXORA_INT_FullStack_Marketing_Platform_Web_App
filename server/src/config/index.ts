@@ -6,6 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export const serverRoot = path.resolve(__dirname, '..', '..')
 
 dotenv.config({ path: path.join(serverRoot, '.env') })
+dotenv.config({ path: path.join(serverRoot, '.env.local'), override: true })
 
 const num = (value: string | undefined, fallback: number) => {
   const parsed = Number(value)
