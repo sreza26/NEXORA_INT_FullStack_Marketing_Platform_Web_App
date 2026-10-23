@@ -3,13 +3,13 @@ import { config } from './config/index.js'
 import { migrate, serverPaths } from './db/index.js'
 import { seed } from './db/seed.js'
 
-migrate()
-seed()
+await migrate()
+await seed()
 
 const app = createApp()
 
 app.listen(config.port, () => {
-  const { databaseFile } = serverPaths()
+  const { database } = serverPaths()
   console.log(`[nexora] API listening on http://localhost:${config.port}`)
-  console.log(`[nexora] database: ${databaseFile}`)
+  console.log(`[nexora] database: ${database}`)
 })

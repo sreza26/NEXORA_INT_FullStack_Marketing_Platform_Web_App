@@ -42,19 +42,19 @@ export function maxPayoutGeneration(): number {
  * inside the configured limit. Idempotent: the unique index on
  * (recipient_id, source_transaction_id, generation) blocks duplicates.
  */
-export function generateCommissions(
+export async function generateCommissions(
   sourceMemberId: number,
   sourceTransactionId: number,
   amount: number,
   options: CommissionOptions = {},
-): CommissionResult {
+): Promise<CommissionResult> {
   if (!config.commission.enabled) return { created: 0, skipped: 0, total: 0 }
 
   const rates = options.rates ?? config.commission.generationRates
   const status = options.status ?? 'approved'
   const credit = options.credit ?? true
 
-  const sponsor = db.prepare('SELECT sponsor_id FROM users WHERE id = ?').get(sourceMemberId) as
+  const sponsor = await db.prepare('SELECT sponsor_id FROM users WHERE id = ?').get(sourceMemberId) as
     | { sponsor_id: number | null }
     | undefined
 
@@ -74,7 +74,7 @@ export function generateCommissions(
     const commissionAmount = Math.round(amount * rate * 100) / 100
 
     if (commissionAmount > 0) {
-      const existing = db
+      const existing = await db
         .prepare(
           'SELECT id FROM commissions WHERE recipient_id = ? AND source_transaction_id = ? AND generation = ?',
         )
@@ -83,7 +83,7 @@ export function generateCommissions(
       if (existing) {
         skipped += 1
       } else {
-        const info = db
+        const info = await db
           .prepare(
             `INSERT INTO commissions (recipient_id, source_member_id, source_transaction_id, generation, amount, rate, status, plan_id, base_amount, idempotency_key)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -102,22 +102,22 @@ export function generateCommissions(
           )
 
         if (credit) {
-          postLedger({
-            memberId: currentSponsorId,
-            type: 'commission',
-            direction: 'credit',
-            amount: commissionAmount,
-            referenceType: 'commission',
-            referenceId: Number(info.lastInsertRowid),
-            description: `Generation ${generation} commission`,
-          })
+          await postLedger({
+                        memberId: currentSponsorId,
+                        type: 'commission',
+                        direction: 'credit',
+                        amount: commissionAmount,
+                        referenceType: 'commission',
+                        referenceId: Number(info.lastInsertRowid),
+                        description: `Generation ${generation} commission`,
+                      })
         }
         created += 1
         total += commissionAmount
       }
     }
 
-    const next = db.prepare('SELECT sponsor_id FROM users WHERE id = ?').get(currentSponsorId) as
+    const next = await db.prepare('SELECT sponsor_id FROM users WHERE id = ?').get(currentSponsorId) as
       | { sponsor_id: number | null }
       | undefined
     currentSponsorId = next?.sponsor_id ?? null
@@ -127,27 +127,27 @@ export function generateCommissions(
   return { created, skipped, total }
 }
 
-export function listCommissions(memberId: number, limit = 100, offset = 0) {
-  return db
+export async function listCommissions(memberId: number, limit = 100, offset = 0): Promise<any[]> {
+  return (await db
     .prepare(
       `SELECT c.id, c.recipient_id, c.source_member_id, c.generation, c.amount, c.rate, c.status, c.created_at,
               u.name AS source_name
        FROM commissions c LEFT JOIN users u ON u.id = c.source_member_id
        WHERE c.recipient_id = ? ORDER BY c.id DESC LIMIT ? OFFSET ?`,
     )
-    .all(memberId, limit, offset) as any[]
+    .all(memberId, limit, offset)) as any[]
 }
 
-export function totalCommissionFor(memberId: number): number {
-  const row = db
+export async function totalCommissionFor(memberId: number): Promise<number> {
+  const row = (await db
     .prepare(`SELECT COALESCE(SUM(amount), 0) AS total FROM commissions WHERE recipient_id = ? AND status = 'approved'`)
-    .get(memberId) as { total: number }
+    .get(memberId)) as { total: number }
   return Number(row.total ?? 0)
 }
 
-export function totalPaidCommission(): number {
-  const row = db
+export async function totalPaidCommission(): Promise<number> {
+  const row = (await db
     .prepare(`SELECT COALESCE(SUM(amount), 0) AS total FROM commissions WHERE status = 'approved'`)
-    .get() as { total: number }
+    .get()) as { total: number }
   return Number(row.total ?? 0)
 }

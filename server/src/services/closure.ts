@@ -7,13 +7,13 @@ const MAX_DEPTH = 50
  * depth 0, the next sponsor up with depth 1 and so on, which matches the
  * generation numbering used by the member network endpoints.
  */
-export function linkReferralClosures(memberId: number): number {
-  const member = db.prepare('SELECT sponsor_id FROM users WHERE id = ?').get(memberId) as
+export async function linkReferralClosures(memberId: number): Promise<number> {
+  const member = await db.prepare('SELECT sponsor_id FROM users WHERE id = ?').get(memberId) as
     | { sponsor_id: number | null }
     | undefined
   if (!member) return 0
 
-  const insert = db.prepare(
+  const insert = await db.prepare(
     'INSERT OR REPLACE INTO referral_closures (ancestor_id, descendant_id, depth) VALUES (?, ?, ?)',
   )
 
@@ -26,7 +26,7 @@ export function linkReferralClosures(memberId: number): number {
     insert.run(current, memberId, depth)
     written += 1
 
-    const next = db.prepare('SELECT sponsor_id FROM users WHERE id = ?').get(current) as
+    const next = await db.prepare('SELECT sponsor_id FROM users WHERE id = ?').get(current) as
       | { sponsor_id: number | null }
       | undefined
     const sponsorId = next?.sponsor_id ?? null
@@ -39,18 +39,18 @@ export function linkReferralClosures(memberId: number): number {
 }
 
 /** Rebuild the whole closure table from the current sponsor links. */
-export function rebuildAllReferralClosures(): number {
-  db.exec('DELETE FROM referral_closures')
+export async function rebuildAllReferralClosures(): Promise<number> {
+  await db.exec('DELETE FROM referral_closures')
 
-  const members = db.prepare('SELECT id FROM users ORDER BY id ASC').all() as unknown as Array<{ id: number }>
+  const members = await db.prepare('SELECT id FROM users ORDER BY id ASC').all() as unknown as Array<{ id: number }>
   let written = 0
   for (const member of members) {
-    written += linkReferralClosures(member.id)
+    written += await linkReferralClosures(member.id)
   }
   return written
 }
 
 /** Drop every closure row that references a member. */
-export function removeMemberClosures(memberId: number): void {
-  db.prepare('DELETE FROM referral_closures WHERE descendant_id = ? OR ancestor_id = ?').run(memberId, memberId)
+export async function removeMemberClosures(memberId: number): Promise<void> {
+  await db.prepare('DELETE FROM referral_closures WHERE descendant_id = ? OR ancestor_id = ?').run(memberId, memberId)
 }

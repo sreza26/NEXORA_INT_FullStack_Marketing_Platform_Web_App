@@ -20,64 +20,64 @@ import { db } from '../db/index.js'
 import { config } from '../config/index.js'
 import { nowIso } from '../db/index.js'
 
-export function summary(req: Request, res: Response) {
+export async function summary(req: Request, res: Response) {
   const memberId = req.user!.id
-  const user = db.prepare('SELECT id, name, email, member_code, status, verification_status FROM users WHERE id = ?').get(memberId)
+  const user = await db.prepare('SELECT id, name, email, member_code, status, verification_status FROM users WHERE id = ?').get(memberId)
 
   res.json({
     user,
-    wallet: { balance: walletBalance(memberId), currency: config.currency },
-    direct_referrals: directReferrals(memberId).length,
-    total_network: totalNetworkSize(memberId),
-    team_volume: teamVolume(memberId),
-    rank: rankOf(memberId),
+    wallet: { balance: await walletBalance(memberId), currency: config.currency },
+    direct_referrals: (await directReferrals(memberId)).length,
+    total_network: await totalNetworkSize(memberId),
+    team_volume: await teamVolume(memberId),
+    rank: await rankOf(memberId),
     pending_withdrawals: (
-      db.prepare(`SELECT COUNT(*) AS c FROM withdrawal_requests WHERE member_id = ? AND status = 'pending'`).get(memberId) as {
+      (await db.prepare(`SELECT COUNT(*) AS c FROM withdrawal_requests WHERE member_id = ? AND status = 'pending'`).get(memberId)) as {
         c: number
       }
     ).c,
-    commission_total: totalCommissionFor(memberId),
-    levels: downlineCounts(memberId),
+    commission_total: await totalCommissionFor(memberId),
+    levels: await downlineCounts(memberId),
   })
 }
 
-export function referrals(req: Request, res: Response) {
-  res.json(directReferrals(req.user!.id))
+export async function referrals(req: Request, res: Response) {
+  res.json(await directReferrals(req.user!.id))
 }
 
-export function network(req: Request, res: Response) {
+export async function network(req: Request, res: Response) {
   const memberId = req.user!.id
   res.json({
-    levels: downlineCounts(memberId),
-    total: totalNetworkSize(memberId),
-    volume: teamVolume(memberId),
+    levels: await downlineCounts(memberId),
+    total: await totalNetworkSize(memberId),
+    volume: await teamVolume(memberId),
     referral_link: `${config.appUrl}/r/${req.user!.member_code}`,
   })
 }
 
-export function commissions(req: Request, res: Response) {
+export async function commissions(req: Request, res: Response) {
   const limit = Number(req.query.limit ?? 100)
   const offset = Number(req.query.offset ?? 0)
   res.json({
-    total: totalCommissionFor(req.user!.id),
-    items: listCommissions(req.user!.id, limit, offset),
+    total: await totalCommissionFor(req.user!.id),
+    items: await listCommissions(req.user!.id, limit, offset),
   })
 }
 
-export function ledger(req: Request, res: Response) {
+export async function ledger(req: Request, res: Response) {
   const limit = Number(req.query.limit ?? 100)
   const offset = Number(req.query.offset ?? 0)
   res.json({
-    balance: walletBalance(req.user!.id),
-    items: listLedger(req.user!.id, limit, offset),
+    balance: await walletBalance(req.user!.id),
+    items: await listLedger(req.user!.id, limit, offset),
   })
 }
 
-export function withdrawals(req: Request, res: Response) {
-  res.json(listWithdrawals(req.user!.id))
+export async function withdrawals(req: Request, res: Response) {
+  res.json(await listWithdrawals(req.user!.id))
 }
 
-export function storeWithdrawal(req: Request, res: Response) {
+export async function storeWithdrawal(req: Request, res: Response) {
   const schema = z.object({
     amount: z.coerce.number().positive('Amount must be greater than zero'),
     method: z.enum(['bank', 'mobile', 'crypto']),
@@ -85,41 +85,41 @@ export function storeWithdrawal(req: Request, res: Response) {
   })
   const data = schema.parse(req.body)
 
-  const result = createWithdrawal({
-    memberId: req.user!.id,
-    amount: data.amount,
-    method: data.method,
-    accountDetails: data.account_details,
-  })
+  const result = await createWithdrawal({
+      memberId: req.user!.id,
+      amount: data.amount,
+      method: data.method,
+      accountDetails: data.account_details,
+    })
 
   res.status(201).json({ id: result.id, balance: result.balance })
 }
 
-export function rewards(req: Request, res: Response) {
-  res.json({ rewards: listRewards(true), claims: listClaims(req.user!.id) })
+export async function rewards(req: Request, res: Response) {
+  res.json({ rewards: await listRewards(true), claims: await listClaims(req.user!.id) })
 }
 
-export function storeRewardClaim(req: Request, res: Response) {
+export async function storeRewardClaim(req: Request, res: Response) {
   const schema = z.object({ reward_id: z.coerce.number().int().positive() })
   const data = schema.parse(req.body)
-  const claimId = claimReward(req.user!.id, data.reward_id)
+  const claimId = await claimReward(req.user!.id, data.reward_id)
   res.status(201).json({ id: claimId })
 }
 
-export function rank(req: Request, res: Response) {
+export async function rank(req: Request, res: Response) {
   const memberId = req.user!.id
-  const evaluated = evaluateRank(memberId)
-  res.json({ rank: rankOf(memberId), evaluated, achievements: achievements(memberId) })
+  const evaluated = await evaluateRank(memberId)
+  res.json({ rank: await rankOf(memberId), evaluated, achievements: await achievements(memberId) })
 }
 
-export function profile(req: Request, res: Response) {
+export async function profile(req: Request, res: Response) {
   const memberId = req.user!.id
-  const row = db.prepare('SELECT * FROM member_profiles WHERE member_id = ?').get(memberId) as any
+  const row = await db.prepare('SELECT * FROM member_profiles WHERE member_id = ?').get(memberId) as any
   if (!row) throw new HttpError(404, 'Profile not found')
   res.json(row)
 }
 
-export function updateProfile(req: Request, res: Response) {
+export async function updateProfile(req: Request, res: Response) {
   const schema = z.object({
     name: z.string().optional(),
     phone: z.string().optional().nullable(),
@@ -134,13 +134,13 @@ export function updateProfile(req: Request, res: Response) {
   const memberId = req.user!.id
 
   if (data.name) {
-    db.prepare("UPDATE users SET name = ?, updated_at = datetime('now') WHERE id = ?").run(data.name, memberId)
+    await db.prepare("UPDATE users SET name = ?, updated_at = datetime('now') WHERE id = ?").run(data.name, memberId)
   }
   if (data.phone !== undefined) {
-    db.prepare("UPDATE users SET phone = ?, updated_at = datetime('now') WHERE id = ?").run(data.phone ?? null, memberId)
+    await db.prepare("UPDATE users SET phone = ?, updated_at = datetime('now') WHERE id = ?").run(data.phone ?? null, memberId)
   }
 
-  db.prepare(
+  await db.prepare(
     `INSERT INTO member_profiles (member_id, full_name, address, address_line, city, country, postal_code, emergency_contact, updated_at)
      VALUES (?, COALESCE(?, (SELECT name FROM users WHERE id = ?)), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), COALESCE(?, ?), datetime('now'))
      ON CONFLICT(member_id) DO UPDATE SET
@@ -171,24 +171,24 @@ export function updateProfile(req: Request, res: Response) {
   res.json({ status: 'ok' })
 }
 
-export function rankProgress(req: Request, res: Response) {
+export async function rankProgress(req: Request, res: Response) {
   const memberId = req.user!.id
-  const evaluated = evaluateRank(memberId)
-  const ranks = db.prepare('SELECT * FROM ranks ORDER BY level ASC').all()
-  const achievements = db.prepare('SELECT ra.*, r.name as rank_name FROM rank_achievements ra LEFT JOIN ranks r ON r.id = ra.rank_id WHERE ra.member_id = ? ORDER BY ra.achieved_at DESC').all(memberId)
-  const user = db.prepare('SELECT id, current_rank_id FROM users WHERE id = ?').get(memberId) as any
-  const current = user?.current_rank_id ? db.prepare('SELECT * FROM ranks WHERE id = ?').get(user.current_rank_id) : null
-  const next = db.prepare('SELECT * FROM ranks WHERE level > ? ORDER BY level ASC LIMIT 1').get((current as any)?.level ?? 0) as any
+  const evaluated = await evaluateRank(memberId)
+  const ranks = await db.prepare('SELECT * FROM ranks ORDER BY level ASC').all()
+  const achievements = await db.prepare('SELECT ra.*, r.name as rank_name FROM rank_achievements ra LEFT JOIN ranks r ON r.id = ra.rank_id WHERE ra.member_id = ? ORDER BY ra.achieved_at DESC').all(memberId)
+  const user = await db.prepare('SELECT id, current_rank_id FROM users WHERE id = ?').get(memberId) as any
+  const current = user?.current_rank_id ? await db.prepare('SELECT * FROM ranks WHERE id = ?').get(user.current_rank_id) : null
+  const next = await db.prepare('SELECT * FROM ranks WHERE level > ? ORDER BY level ASC LIMIT 1').get((current as any)?.level ?? 0) as any
 
   const requirements = []
   if (next) {
-    const reqs = db.prepare('SELECT * FROM rank_requirements WHERE rank_id = ? ORDER BY sort_order ASC').all((next as any).id) as any[]
+    const reqs = await db.prepare('SELECT * FROM rank_requirements WHERE rank_id = ? ORDER BY sort_order ASC').all((next as any).id) as any[]
     for (const r of reqs) {
       let actual = 0
-      if (r.type === 'min_direct_links') actual = directReferrals(memberId).length
-      if (r.type === 'downline_volume') actual = teamVolume(memberId)
+      if (r.type === 'min_direct_links') actual = (await directReferrals(memberId)).length
+      if (r.type === 'downline_volume') actual = await teamVolume(memberId)
       if (r.type === 'has_direct_sponsor') {
-        const s = db.prepare('SELECT sponsor_id FROM users WHERE id = ?').get(memberId) as any
+        const s = await db.prepare('SELECT sponsor_id FROM users WHERE id = ?').get(memberId) as any
         actual = s?.sponsor_id ? 1 : 0
       }
       const required = Number(r.value ?? 0)
@@ -205,88 +205,95 @@ export function rankProgress(req: Request, res: Response) {
   res.json({
     progress: { current, next, requirements },
     metrics: {
-      direct_links_count: directReferrals(memberId).length,
-      has_direct_sponsor: !!(db.prepare('SELECT sponsor_id FROM users WHERE id = ?').get(memberId) as any)?.sponsor_id,
-      downline_volume_lifetime: teamVolume(memberId),
-      downline_volume_period: teamVolume(memberId),
-      downline_members: totalNetworkSize(memberId),
-      max_downline_depth: Number((db.prepare('SELECT MAX(depth) as d FROM referral_closures WHERE ancestor_id = ?').get(memberId) as any)?.d ?? 0),
+      direct_links_count: (await directReferrals(memberId)).length,
+      has_direct_sponsor: !!(await db.prepare('SELECT sponsor_id FROM users WHERE id = ?').get(memberId) as any)?.sponsor_id,
+      downline_volume_lifetime: await teamVolume(memberId),
+      downline_volume_period: await teamVolume(memberId),
+      downline_members: await totalNetworkSize(memberId),
+      max_downline_depth: Number((await db.prepare('SELECT MAX(depth) as d FROM referral_closures WHERE ancestor_id = ?').get(memberId) as any)?.d ?? 0),
     },
     ranks,
     achievements,
   })
 }
 
-export function team(req: Request, res: Response) {
+export async function team(req: Request, res: Response) {
   const memberId = req.user!.id
   const generation = req.query.generation ? Number(req.query.generation) : null
   const q = (req.query.q as string | undefined)?.trim().toLowerCase()
 
   let members: any[] = []
   if (generation && generation > 1) {
-    const ids = db.prepare('SELECT descendant_id FROM referral_closures WHERE ancestor_id = ? AND depth = ?').all(memberId, generation - 1) as any[]
+    const ids = await db.prepare('SELECT descendant_id FROM referral_closures WHERE ancestor_id = ? AND depth = ?').all(memberId, generation - 1) as any[]
     const idList = ids.map((i) => i.descendant_id)
     if (idList.length) {
       const placeholders = idList.map(() => '?').join(',')
-      members = db.prepare(`SELECT * FROM users WHERE id IN (${placeholders}) ORDER BY registered_at ASC`).all(...idList)
+      members = await db.prepare(`SELECT * FROM users WHERE id IN (${placeholders}) ORDER BY registered_at ASC`).all(...idList)
     }
   } else {
-    members = db.prepare('SELECT * FROM users WHERE sponsor_id = ? ORDER BY registered_at ASC').all(memberId)
+    members = await db.prepare('SELECT * FROM users WHERE sponsor_id = ? ORDER BY registered_at ASC').all(memberId)
   }
 
   if (q) {
     members = members.filter((m) => m.name?.toLowerCase().includes(q) || m.email?.toLowerCase().includes(q) || m.member_code?.toLowerCase().includes(q))
   }
 
-  const enriched = members.map((m) => {
-    const rank = m.current_rank_id ? db.prepare('SELECT * FROM ranks WHERE id = ?').get(m.current_rank_id) : null
-    return { ...m, currentRank: rank }
-  })
+  const enriched = await Promise.all(
+    members.map(async (m) => {
+      const rank = m.current_rank_id ? await db.prepare('SELECT * FROM ranks WHERE id = ?').get(m.current_rank_id) : null
+      return { ...m, currentRank: rank }
+    }),
+  )
 
   const genCounts: Record<number, number> = {}
   for (let g = 1; g <= 6; g++) {
-    if (g === 1) genCounts[g] = directReferrals(memberId).length
-    else genCounts[g] = Number((db.prepare('SELECT COUNT(*) as c FROM referral_closures WHERE ancestor_id = ? AND depth = ?').get(memberId, g - 1) as any)?.c ?? 0)
+    if (g === 1) genCounts[g] = (await directReferrals(memberId)).length
+    else genCounts[g] = Number((await db.prepare('SELECT COUNT(*) as c FROM referral_closures WHERE ancestor_id = ? AND depth = ?').get(memberId, g - 1) as any)?.c ?? 0)
   }
 
   res.json({ members: enriched, generationCounts: genCounts })
 }
 
-export function teamShow(req: Request, res: Response) {
+export async function teamShow(req: Request, res: Response) {
   const memberId = req.user!.id
   const targetId = Number(req.params.member)
-  const member = db.prepare('SELECT * FROM users WHERE id = ?').get(targetId) as any
+  const member = await db.prepare('SELECT * FROM users WHERE id = ?').get(targetId) as any
   if (!member) throw new HttpError(404, 'Member not found')
 
-  const depth = (db.prepare('SELECT depth FROM referral_closures WHERE ancestor_id = ? AND descendant_id = ?').get(memberId, targetId) as any)?.depth ?? null
-  const sponsor = member.sponsor_id ? db.prepare('SELECT * FROM users WHERE id = ?').get(member.sponsor_id) : null
-  const rank = member.current_rank_id ? db.prepare('SELECT * FROM ranks WHERE id = ?').get(member.current_rank_id) : null
-  const directReferralsList = directReferrals(targetId).map((r: any) => ({ ...r, currentRank: r.current_rank_id ? db.prepare('SELECT * FROM ranks WHERE id = ?').get(r.current_rank_id) : null }))
+  const depth = (await db.prepare('SELECT depth FROM referral_closures WHERE ancestor_id = ? AND descendant_id = ?').get(memberId, targetId) as any)?.depth ?? null
+  const sponsor = member.sponsor_id ? await db.prepare('SELECT * FROM users WHERE id = ?').get(member.sponsor_id) : null
+  const rank = member.current_rank_id ? await db.prepare('SELECT * FROM ranks WHERE id = ?').get(member.current_rank_id) : null
+  const directReferralsList = await Promise.all(
+    (await directReferrals(targetId)).map(async (r: any) => ({
+      ...r,
+      currentRank: r.current_rank_id ? await db.prepare('SELECT * FROM ranks WHERE id = ?').get(r.current_rank_id) : null,
+    })),
+  )
 
   res.json({ member: { ...member, sponsor, currentRank: rank }, directReferrals: directReferralsList, depth })
 }
 
-export function salary(req: Request, res: Response) {
+export async function salary(req: Request, res: Response) {
   const memberId = req.user!.id
-  const payouts = db.prepare('SELECT * FROM salary_payouts WHERE member_id = ? ORDER BY id DESC').all(memberId) as any[]
-  const rank = db.prepare('SELECT r.* FROM users u LEFT JOIN ranks r ON r.id = u.current_rank_id WHERE u.id = ?').get(memberId)
+  const payouts = await db.prepare('SELECT * FROM salary_payouts WHERE member_id = ? ORDER BY id DESC').all(memberId) as any[]
+  const rank = await db.prepare('SELECT r.* FROM users u LEFT JOIN ranks r ON r.id = u.current_rank_id WHERE u.id = ?').get(memberId)
   res.json({ payouts, rank })
 }
 
-export function wallet(req: Request, res: Response) {
+export async function wallet(req: Request, res: Response) {
   const memberId = req.user!.id
-  const account = db.prepare('SELECT * FROM wallet_accounts WHERE member_id = ?').get(memberId) as any
-  const entries = listLedger(memberId, 100, 0)
+  const account = await db.prepare('SELECT * FROM wallet_accounts WHERE member_id = ?').get(memberId) as any
+  const entries = await listLedger(memberId, 100, 0)
   res.json({ account: account || { balance: 0, pending_balance: 0, lifetime_credited: 0, lifetime_debited: 0, currency: 'USD' }, entries })
 }
 
-export function deposits(req: Request, res: Response) {
+export async function deposits(req: Request, res: Response) {
   const memberId = req.user!.id
-  const deposits = db.prepare('SELECT * FROM deposits WHERE member_id = ? ORDER BY created_at DESC').all(memberId)
+  const deposits = await db.prepare('SELECT * FROM deposits WHERE member_id = ? ORDER BY created_at DESC').all(memberId)
   res.json({ deposits, policyEnabled: true, holdDays: 30 })
 }
 
-export function storeDeposit(req: Request, res: Response) {
+export async function storeDeposit(req: Request, res: Response) {
   const schema = z.object({
     amount: z.coerce.number().positive(),
     method: z.string().min(1),
@@ -295,25 +302,25 @@ export function storeDeposit(req: Request, res: Response) {
   const data = schema.parse(req.body)
   const memberId = req.user!.id
   const ref = data.reference || `DEP-${Date.now()}`
-  db.prepare('INSERT INTO deposits (member_id, reference, amount, currency, method, status, hold_until, submitted_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,datetime("now"),datetime("now"))')
+  await db.prepare('INSERT INTO deposits (member_id, reference, amount, currency, method, status, hold_until, submitted_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,datetime("now"),datetime("now"))')
     .run(memberId, ref, data.amount, 'USD', data.method, 'pending', new Date(Date.now() + 30*86400000).toISOString().slice(0,10), nowIso())
   res.status(201).json({ status: 'ok' })
 }
 
-export function transactions(req: Request, res: Response) {
+export async function transactions(req: Request, res: Response) {
   const memberId = req.user!.id
   const status = req.query.status as string | undefined
   let query = 'SELECT * FROM business_transactions WHERE member_id = ?'
   const params: any[] = [memberId]
   if (status) { query += ' AND status = ?'; params.push(status) }
   query += ' ORDER BY created_at DESC'
-  const transactions = db.prepare(query).all(...params)
+  const transactions = await db.prepare(query).all(...params)
   res.json({ transactions })
 }
 
-export function notifications(req: Request, res: Response) {
+export async function notifications(req: Request, res: Response) {
   const memberId = req.user!.id
-  const notifications = db.prepare('SELECT * FROM notifications WHERE member_id = ? ORDER BY created_at DESC').all(memberId)
+  const notifications = await db.prepare('SELECT * FROM notifications WHERE member_id = ? ORDER BY created_at DESC').all(memberId)
   res.json({ notifications })
 }
 
@@ -324,11 +331,11 @@ export function notifications(req: Request, res: Response) {
  * React client polls this lightweight endpoint instead of loading the whole
  * notification list on every page.
  */
-export function notificationUnreadCount(req: Request, res: Response) {
+export async function notificationUnreadCount(req: Request, res: Response) {
   const memberId = req.user!.id
-  const row = db
+  const row = (await db
     .prepare('SELECT COUNT(*) AS c FROM notifications WHERE member_id = ? AND read_at IS NULL')
-    .get(memberId) as { c: number }
+    .get(memberId)) as { c: number }
   res.json({ count: row.c })
 }
 
@@ -338,8 +345,8 @@ export function notificationUnreadCount(req: Request, res: Response) {
  * Mirrors the Laravel view composer, which shares the five most recent
  * published announcements with the member layout.
  */
-export function announcements(req: Request, res: Response) {
-  const rows = db
+export async function announcements(_req: Request, res: Response) {
+  const rows = await db
     .prepare(
       `SELECT id, title, body, severity, published_at
        FROM announcements
@@ -351,9 +358,9 @@ export function announcements(req: Request, res: Response) {
   res.json({ announcements: rows })
 }
 
-export function readAllNotifications(req: Request, res: Response) {
+export async function readAllNotifications(req: Request, res: Response) {
   const memberId = req.user!.id
-  db.prepare("UPDATE notifications SET read_at = datetime('now') WHERE member_id = ? AND read_at IS NULL").run(memberId)
+  await db.prepare("UPDATE notifications SET read_at = datetime('now') WHERE member_id = ? AND read_at IS NULL").run(memberId)
   res.json({ status: 'ok' })
 }
 
@@ -361,7 +368,7 @@ export function security(req: Request, res: Response) {
   res.json({ ok: true })
 }
 
-export function updateSecurityPassword(req: Request, res: Response) {
+export async function updateSecurityPassword(req: Request, res: Response) {
   const schema = z.object({
     current_password: z.string().min(1),
     password: z.string().min(8),
@@ -370,22 +377,22 @@ export function updateSecurityPassword(req: Request, res: Response) {
   const data = schema.parse(req.body)
   if (data.password !== data.password_confirmation) throw new HttpError(422, 'Password confirmation does not match')
   const memberId = req.user!.id
-  const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(memberId) as any
+  const user = await db.prepare('SELECT password_hash FROM users WHERE id = ?').get(memberId) as any
   if (!user || !bcrypt.compareSync(data.current_password, user.password_hash)) throw new HttpError(422, 'Current password is incorrect')
-  db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(bcrypt.hashSync(data.password, 10), memberId)
+  await db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(bcrypt.hashSync(data.password, 10), memberId)
   res.json({ status: 'ok' })
 }
 
-export function verification(req: Request, res: Response) {
+export async function verification(req: Request, res: Response) {
   const memberId = req.user!.id
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(memberId) as any
-  const profile = db.prepare('SELECT * FROM member_profiles WHERE member_id = ?').get(memberId)
+  const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(memberId) as any
+  const profile = await db.prepare('SELECT * FROM member_profiles WHERE member_id = ?').get(memberId)
   res.json({ user: { ...user, profile }, profile })
 }
 
 export async function storeVerification(req: Request, res: Response) {
   const memberId = req.user!.id
-  const current = db.prepare('SELECT verification_status FROM users WHERE id = ?').get(memberId) as
+  const current = await db.prepare('SELECT verification_status FROM users WHERE id = ?').get(memberId) as
     | { verification_status: string }
     | undefined
 
@@ -414,14 +421,14 @@ export async function storeVerification(req: Request, res: Response) {
     throw new HttpError(422, 'The selfie must be a JPG or PNG image.')
   }
 
-  const previous = db.prepare('SELECT nid_document_path, selfie_document_path FROM member_profiles WHERE member_id = ?').get(memberId) as
+  const previous = await db.prepare('SELECT nid_document_path, selfie_document_path FROM member_profiles WHERE member_id = ?').get(memberId) as
     | { nid_document_path: string | null; selfie_document_path: string | null }
     | undefined
 
   const nid = storeVerificationDocument({ userId: memberId, data: nidDocument.data, mimeType: nidDocument.mimeType })
   const selfie = storeVerificationDocument({ userId: memberId, data: selfieDocument.data, mimeType: selfieDocument.mimeType })
 
-  db.prepare(
+  await db.prepare(
     `INSERT INTO member_profiles (member_id, full_name, nid_number, country, nid_document_path, selfie_document_path, updated_at)
      VALUES (?,?,?,?,?,?,datetime('now'))
      ON CONFLICT(member_id) DO UPDATE SET
@@ -436,8 +443,8 @@ export async function storeVerification(req: Request, res: Response) {
   if (previous?.nid_document_path) deleteStoredFile(previous.nid_document_path)
   if (previous?.selfie_document_path) deleteStoredFile(previous.selfie_document_path)
 
-  db.prepare("UPDATE users SET verification_status = 'pending', updated_at = datetime('now') WHERE id = ?").run(memberId)
-  db.prepare('INSERT INTO audit_logs (actor_id, action, subject_type, subject_id, payload) VALUES (?, ?, ?, ?, ?)').run(
+  await db.prepare("UPDATE users SET verification_status = 'pending', updated_at = datetime('now') WHERE id = ?").run(memberId)
+  await db.prepare('INSERT INTO audit_logs (actor_id, action, subject_type, subject_id, payload) VALUES (?, ?, ?, ?, ?)').run(
     memberId,
     'verification.submitted',
     'user',
@@ -451,11 +458,11 @@ export async function storeVerification(req: Request, res: Response) {
   })
 }
 
-export function claimRewardById(req: Request, res: Response) {
+export async function claimRewardById(req: Request, res: Response) {
   const schema = z.object({ note: z.string().optional().nullable() })
   schema.parse(req.body || {})
   const memberId = req.user!.id
   const rewardId = Number(req.params.id)
-  const claimId = claimReward(memberId, rewardId)
+  const claimId = await claimReward(memberId, rewardId)
   res.status(201).json({ id: claimId })
 }

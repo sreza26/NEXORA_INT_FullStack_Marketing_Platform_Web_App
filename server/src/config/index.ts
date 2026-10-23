@@ -12,10 +12,6 @@ const num = (value: string | undefined, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
-const absoluteDb = process.env.DATABASE_FILE && path.isAbsolute(process.env.DATABASE_FILE)
-  ? process.env.DATABASE_FILE
-  : path.join(serverRoot, 'database', process.env.DATABASE_FILE ?? 'nexora.sqlite')
-
 export interface GenerationRate {
   generation_from: number;
   generation_to: number;
@@ -52,7 +48,16 @@ export const config = {
     .filter(Boolean),
   jwtSecret: process.env.JWT_SECRET ?? 'change-me-in-production',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
-  databaseFile: absoluteDb,
+  serverRoot,
+  db: {
+    host: process.env.DB_HOST ?? 'localhost',
+    port: num(process.env.DB_PORT, 3306),
+    name: process.env.DB_NAME ?? 'nexora',
+    user: process.env.DB_USER ?? 'root',
+    password: process.env.DB_PASSWORD ?? '',
+    ssl: (process.env.DB_SSL ?? 'false') === 'true',
+    poolLimit: num(process.env.DB_POOL_LIMIT, 10),
+  },
   uploadsDir: path.join(serverRoot, 'storage', 'uploads'),
   currency: process.env.CURRENCY ?? 'USD',
   memberCodePrefix: process.env.MEMBER_CODE_PREFIX ?? 'NX',

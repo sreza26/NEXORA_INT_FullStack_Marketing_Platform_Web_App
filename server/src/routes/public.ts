@@ -9,10 +9,10 @@ import { db } from '../db/index.js'
 
 const router = Router()
 
-router.get('/config', (_req, res) => {
-  const plan = db
+router.get('/config', async (_req, res) => {
+  const plan = (await db
     .prepare('SELECT id, version, status FROM compensation_plans WHERE is_active = 1 ORDER BY version DESC LIMIT 1')
-    .get() as { id: number; version: number; status: string } | undefined
+    .get()) as { id: number; version: number; status: string } | undefined
 
   res.json({
     app_name: 'NEXORA',
@@ -25,14 +25,14 @@ router.get('/config', (_req, res) => {
     plan: plan ?? null,
     withdrawal: { min: config.withdrawal.minAmount, max: config.withdrawal.maxAmount, hold_days: config.withdrawal.holdDays },
     registration: { sponsor_required: config.registration.sponsorRequired },
-    ranks: listRanksWithRequirements(),
-    rewards: listTravelRewards(true),
+    ranks: await listRanksWithRequirements(),
+    rewards: await listTravelRewards(true),
   })
 })
 
-router.get('/referral/:code', (req, res) => {
+router.get('/referral/:code', async (req, res) => {
   const code = z.string().min(3).max(32).parse(req.params.code)
-  const sponsor = findUserByCode(code)
+  const sponsor = await findUserByCode(code)
   if (!sponsor) {
     res.status(404).json({ message: 'This referral code is not valid' })
     return
@@ -49,7 +49,7 @@ router.post(
     max: config.rateLimit.contact.max,
     key: (req) => clientIp(req),
   }),
-  (req, res) => {
+  async (req, res) => {
     const schema = z.object({
       name: z.string().min(2),
       email: z.string().email(),
@@ -58,7 +58,7 @@ router.post(
     })
     const data = schema.parse(req.body)
 
-    db.prepare('INSERT INTO audit_logs (actor_id, action, subject_type, payload) VALUES (?, ?, ?, ?)').run(
+    await db.prepare('INSERT INTO audit_logs (actor_id, action, subject_type, payload) VALUES (?, ?, ?, ?)').run(
       null,
       'contact.message',
       'contact',

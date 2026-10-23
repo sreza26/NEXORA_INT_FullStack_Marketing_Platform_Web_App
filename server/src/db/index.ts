@@ -1,24 +1,205 @@
-import fs from 'fs'
-import path from 'path'
-import { DatabaseSync } from 'node:sqlite'
-import { config, serverRoot } from '../config/index.js'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import mysql, { type Pool, type PoolConnection, type ResultSetHeader } from 'mysql2/promise'
+import { config } from '../config/index.js'
 
-const originalEmit = process.emitWarning.bind(process)
-process.emitWarning = ((warning: string | Error, ...args: any[]) => {
-  if (typeof warning === 'string' && warning.includes('SQLite is an experimental feature')) return
-  if (warning instanceof Error && warning.message.includes('SQLite is an experimental feature')) return
-  return originalEmit(warning as any, ...args)
-}) as typeof process.emitWarning
+const transactionStorage = new AsyncLocalStorage<PoolConnection>()
 
-fs.mkdirSync(path.dirname(config.databaseFile), { recursive: true })
-fs.mkdirSync(config.uploadsDir, { recursive: true })
+let pool: Pool | null = null
 
-export const db = new DatabaseSync(config.databaseFile)
+export function getPool(): Pool {
+  if (!pool) {
+    pool = mysql.createPool({
+      host: config.db.host,
+      port: config.db.port,
+      user: config.db.user,
+      password: config.db.password,
+      database: config.db.name,
+      waitForConnections: true,
+      connectionLimit: config.db.poolLimit,
+      queueLimit: 0,
+      charset: 'utf8mb4',
+      dateStrings: true,
+      decimalNumbers: true,
+      timezone: 'Z',
+      ssl: config.db.ssl ? { rejectUnauthorized: false } : undefined,
+    })
+  }
+  return pool
+}
 
-db.exec('PRAGMA journal_mode = WAL;')
-db.exec('PRAGMA foreign_keys = ON;')
+function executor(): Pool | PoolConnection {
+  return transactionStorage.getStore() ?? getPool()
+}
 
-export const SCHEMA = `
+export async function closeDb(): Promise<void> {
+  if (!pool) return
+  const closing = pool
+  pool = null
+  await closing.end()
+}
+
+const SQLITE_TO_MYSQL: Array<[RegExp, string]> = [
+  [/\bINSERT\s+OR\s+IGNORE\s+INTO\b/gi, 'INSERT IGNORE INTO'],
+  [/\bINSERT\s+OR\s+REPLACE\s+INTO\b/gi, 'REPLACE INTO'],
+  [/\bdatetime\s*\(\s*'now'\s*\)/gi, 'NOW()'],
+  [/\bdatetime\s*\(\s*"now"\s*\)/gi, 'NOW()'],
+]
+
+export function normalizeSql(sql: string): string {
+  let out = sql.replace(
+    /\bdatetime\s*\(\s*['"]now['"]\s*,\s*['"]\s*([+-]?\d+)\s+(day|hour|minute|second|month|year)s?\s*['"]\s*\)/gi,
+    (_match, amount: string, unit: string) => `DATE_ADD(NOW(), INTERVAL ${Number(amount)} ${unit.toUpperCase()})`,
+  )
+  out = out.replace(/(?<![\w`])key(?![\w`])/gi, (match, offset: number, source: string) => {
+    const before = source.slice(Math.max(0, offset - 20), offset).toUpperCase()
+    if (/ON\s+DUPLICATE\s*$/.test(before) || /(FOREIGN|PRIMARY|UNIQUE)\s*$/.test(before)) return match
+    return '`key`'
+  })
+  for (const [pattern, replacement] of SQLITE_TO_MYSQL) out = out.replace(pattern, replacement)
+
+  if (/ON\s+CONFLICT\s*\([^)]*\)\s*DO\s+NOTHING/i.test(out)) {
+    out = out.replace(/INSERT\s+INTO\b/gi, 'INSERT IGNORE INTO')
+    out = out.replace(/ON\s+CONFLICT\s*\([^)]*\)\s*DO\s+NOTHING/gi, '')
+  }
+
+  out = out.replace(
+    /ON\s+CONFLICT\s*\([^)]*\)\s*DO\s+UPDATE\s+SET/gi,
+    'ON DUPLICATE KEY UPDATE',
+  )
+  out = out.replace(/\bexcluded\.([a-zA-Z0-9_]+)\b/g, 'VALUES($1)')
+
+  return out
+}
+
+export interface RunResult {
+  changes: number
+  lastInsertRowid: number
+}
+
+class Statement {
+  constructor(private readonly sql: string) {}
+
+  async get<T = unknown>(...params: unknown[]): Promise<T | undefined> {
+    const [rows] = await executor().query(normalizeSql(this.sql), params)
+    if (!Array.isArray(rows)) return undefined
+    return rows[0] as T | undefined
+  }
+
+  async all<T = unknown>(...params: unknown[]): Promise<T[]> {
+    const [rows] = await executor().query(normalizeSql(this.sql), params)
+    return (Array.isArray(rows) ? rows : []) as T[]
+  }
+
+  async run(...params: unknown[]): Promise<RunResult> {
+    const [result] = await executor().query(normalizeSql(this.sql), params)
+    const header = result as ResultSetHeader
+    return {
+      changes: Number(header?.affectedRows ?? 0),
+      lastInsertRowid: Number(header?.insertId ?? 0),
+    }
+  }
+}
+
+export const db = {
+  prepare(sql: string): Statement {
+    return new Statement(sql)
+  },
+  async exec(sql: string): Promise<void> {
+    await executor().query(normalizeSql(sql))
+  },
+  async query<T = unknown>(sql: string, params: unknown[] = []): Promise<T[]> {
+    const [rows] = await executor().query(normalizeSql(sql), params)
+    return (Array.isArray(rows) ? rows : []) as T[]
+  },
+}
+
+export async function transaction<T>(fn: () => Promise<T>): Promise<T> {
+  if (transactionStorage.getStore()) return fn()
+
+  const connection = await getPool().getConnection()
+  try {
+    await connection.beginTransaction()
+    const result = await transactionStorage.run(connection, fn)
+    await connection.commit()
+    return result
+  } catch (error) {
+    try {
+      await connection.rollback()
+    } catch {
+      // The original error is more useful than a rollback failure.
+    }
+    throw error
+  } finally {
+    connection.release()
+  }
+}
+
+const TIMESTAMP_COLUMNS = new Set([
+  'created_at',
+  'updated_at',
+  'deleted_at',
+  'email_verified_at',
+  'registered_at',
+  'suspended_at',
+  'requested_at',
+  'processed_at',
+  'reviewed_at',
+  'paid_at',
+  'achieved_at',
+  'claimed_at',
+  'approved_at',
+  'activated_at',
+  'started_at',
+  'finished_at',
+  'published_at',
+  'expires_at',
+  'verified_at',
+  'read_at',
+  'submitted_at',
+  'hold_until',
+  'last_reconciled_at',
+  'commissioned_at',
+  'effective_from',
+  'effective_to',
+  'eligibility_from',
+  'eligibility_to',
+  'run_at',
+  'created',
+  'updated',
+])
+
+function convertSchema(sql: string): string {
+  let out = sql
+  out = out.replace(/INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT/gi, 'INT AUTO_INCREMENT PRIMARY KEY')
+  out = out.replace(/email\s+TEXT\s+PRIMARY\s+KEY/gi, 'email VARCHAR(255) PRIMARY KEY')
+  out = out.replace(/\bname\s+TEXT\s+NOT\s+NULL\s+UNIQUE/gi, 'name VARCHAR(255) NOT NULL UNIQUE')
+  out = out.replace(/\bemail\s+TEXT\s+NOT\s+NULL\s+UNIQUE/gi, 'email VARCHAR(255) NOT NULL UNIQUE')
+  out = out.replace(
+    /\bmember_code\s+TEXT\s+NOT\s+NULL\s+UNIQUE/gi,
+    'member_code VARCHAR(64) NOT NULL UNIQUE',
+  )
+  out = out.replace(/\bcode\s+TEXT\s+NOT\s+NULL\s+UNIQUE/gi, 'code VARCHAR(64) NOT NULL UNIQUE')
+  out = out.replace(/\breference\s+TEXT\s+UNIQUE/gi, 'reference VARCHAR(191) UNIQUE')
+  out = out.replace(/\bperiod\s+TEXT\s+NOT\s+NULL\s+UNIQUE/gi, 'period VARCHAR(32) NOT NULL UNIQUE')
+  out = out.replace(/\bperiod\s+TEXT\s+NOT\s+NULL/gi, 'period VARCHAR(32) NOT NULL')
+  out = out.replace(/\bkey\s+TEXT\s+NOT\s+NULL\s+UNIQUE/gi, '`key` VARCHAR(191) NOT NULL UNIQUE')
+  out = out.replace(/\bkey\s+TEXT\b/gi, '`key` VARCHAR(255)')
+
+  for (const column of TIMESTAMP_COLUMNS) {
+    out = out.replace(new RegExp(`\\b${column}\\s+TEXT\\b`, 'gi'), `${column} DATETIME`)
+  }
+
+  out = out.replace(
+    /DEFAULT\s*\(\s*(?:datetime\s*\(\s*'now'\s*\)|NOW\(\))\s*\)/gi,
+    'DEFAULT CURRENT_TIMESTAMP',
+  )
+  out = out.replace(/DEFAULT\s+NOW\(\)/gi, 'DEFAULT CURRENT_TIMESTAMP')
+  out = out.replace(/CREATE\s+(UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS/gi, 'CREATE $1INDEX')
+
+  return out
+}
+
+const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
@@ -390,23 +571,6 @@ CREATE TABLE IF NOT EXISTS email_verification_tokens (
 );
 `
 
-export function migrate(): void {
-  db.exec(SCHEMA)
-  applyColumnMigrations()
-}
-
-/**
- * Add a column to an existing table when it is missing. Returns true when the
- * column was created, false when it already existed.
- */
-export function ensureColumn(table: string, column: string, type: string, defaultValue?: string): boolean {
-  const info = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
-  if (info.some((c) => c.name === column)) return false
-  const def = defaultValue !== undefined ? ` DEFAULT ${defaultValue}` : ''
-  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}${def}`)
-  return true
-}
-
 const COLUMN_MIGRATIONS: Array<[string, string, string, string?]> = [
   ['roles', 'label', 'TEXT'],
   ['roles', 'description', 'TEXT'],
@@ -432,8 +596,8 @@ const COLUMN_MIGRATIONS: Array<[string, string, string, string?]> = [
   ['commissions', 'approved_at', 'TEXT'],
   ['commissions', 'paid_at', 'TEXT'],
   ['commissions', 'rejection_reason', 'TEXT'],
-  ['compensation_plans', 'name', "TEXT DEFAULT 'Compensation Plan'"],
-  ['compensation_plans', 'commission_base', "TEXT DEFAULT 'eligible_verified_amount'"],
+  ['compensation_plans', 'name', 'TEXT', "'Compensation Plan'"],
+  ['compensation_plans', 'commission_base', 'TEXT', "'eligible_verified_amount'"],
   ['compensation_plans', 'eligible_transaction_types', 'TEXT'],
   ['compensation_plans', 'effective_from', 'TEXT'],
   ['compensation_plans', 'effective_to', 'TEXT'],
@@ -447,7 +611,7 @@ const COLUMN_MIGRATIONS: Array<[string, string, string, string?]> = [
   ['rewards', 'max_claims', 'INTEGER'],
   ['rewards', 'required_rank_id', 'INTEGER'],
   ['withdrawal_requests', 'reference', 'TEXT'],
-  ['withdrawal_requests', 'currency', "TEXT DEFAULT 'USD'"],
+  ['withdrawal_requests', 'currency', 'TEXT', "'USD'"],
   ['withdrawal_requests', 'review_note', 'TEXT'],
   ['withdrawal_requests', 'reviewed_by', 'INTEGER'],
   ['withdrawal_requests', 'reviewed_at', 'TEXT'],
@@ -459,9 +623,6 @@ const COLUMN_MIGRATIONS: Array<[string, string, string, string?]> = [
   ['reward_claims', 'note', 'TEXT'],
   ['reward_claims', 'reviewed_by', 'INTEGER'],
   ['reward_claims', 'reviewed_at', 'TEXT'],
-  ['withdrawal_requests', 'reference', 'TEXT'],
-  ['withdrawal_requests', 'review_note', 'TEXT'],
-  ['withdrawal_requests', 'paid_at', 'TEXT'],
   ['deposits', 'notes', 'TEXT'],
   ['deposits', 'verified_by', 'INTEGER'],
   ['deposits', 'verified_at', 'TEXT'],
@@ -478,17 +639,17 @@ const COLUMN_MIGRATIONS: Array<[string, string, string, string?]> = [
   ['rewards', 'eligibility_to', 'TEXT'],
   ['rewards', 'config', 'TEXT'],
   ['rewards', 'updated_at', 'TEXT'],
-  ['business_transactions', 'currency', "TEXT DEFAULT 'USD'"],
+  ['business_transactions', 'currency', 'TEXT', "'USD'"],
   ['business_transactions', 'verified_by', 'INTEGER'],
   ['business_transactions', 'commissioned_by_job_run_id', 'INTEGER'],
   ['business_transactions', 'commissioned_at', 'TEXT'],
   ['business_transactions', 'reversal_of_id', 'INTEGER'],
   ['business_transactions', 'notes', 'TEXT'],
   ['business_transactions', 'updated_at', 'TEXT'],
-  ['wallet_accounts', 'status', "TEXT DEFAULT 'active'"],
+  ['wallet_accounts', 'status', 'TEXT', "'active'"],
   ['wallet_accounts', 'last_reconciled_at', 'TEXT'],
   ['rank_requirements', 'target_rank_id', 'INTEGER'],
-  ['rank_requirements', 'period', "TEXT DEFAULT 'monthly'"],
+  ['rank_requirements', 'period', 'TEXT', "'monthly'"],
   ['rank_requirements', 'require_separate_branches', 'INTEGER', '0'],
   ['rank_requirements', 'created_at', 'TEXT'],
   ['rank_requirements', 'updated_at', 'TEXT'],
@@ -504,46 +665,102 @@ const COLUMN_MIGRATIONS: Array<[string, string, string, string?]> = [
   ['referral_closures', 'created_at', 'TEXT'],
 ]
 
-function applyColumnMigrations(): void {
-  for (const [table, column, type, defaultValue] of COLUMN_MIGRATIONS) {
-    ensureColumn(table, column, type, defaultValue)
+function isIgnorableSchemaError(error: unknown): boolean {
+  const code = (error as { code?: string })?.code
+  return code === 'ER_TABLE_EXISTS_ERROR' || code === 'ER_DUP_KEYNAME' || code === 'ER_FK_DUP_NAME'
+}
+
+export async function ensureColumn(
+  table: string,
+  column: string,
+  type: string,
+  defaultValue?: string,
+): Promise<boolean> {
+  const [rows] = await getPool().query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+    [table, column],
+  )
+  if (Array.isArray(rows) && rows.length > 0) return false
+
+  let baseType = type
+  let fallback = defaultValue
+  const inlineDefault = /^(.+?)\s+DEFAULT\s+(.+)$/i.exec(type)
+  if (inlineDefault) {
+    baseType = inlineDefault[1]
+    if (fallback === undefined) fallback = inlineDefault[2]
   }
 
-  db.exec(
+  const needsKeyLength = /TEXT/i.test(baseType) && fallback !== undefined
+  if (needsKeyLength) baseType = 'VARCHAR(255)'
+  if (TIMESTAMP_COLUMNS.has(column) && /TEXT/i.test(baseType)) baseType = 'DATETIME'
+
+  const def = fallback !== undefined ? ` DEFAULT ${fallback}` : ''
+  await getPool().query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${baseType}${def}`)
+  return true
+}
+
+async function applyColumnMigrations(): Promise<void> {
+  for (const [table, column, type, defaultValue] of COLUMN_MIGRATIONS) {
+    await ensureColumn(table, column, type, defaultValue)
+  }
+
+  await db.exec(
     `UPDATE business_transactions
      SET gross_amount = amount
      WHERE (gross_amount IS NULL OR gross_amount = 0) AND amount IS NOT NULL AND amount <> 0`,
   )
-  db.exec(
+  await db.exec(
     `UPDATE business_transactions
      SET eligible_amount = gross_amount
      WHERE (eligible_amount IS NULL OR eligible_amount = 0) AND gross_amount <> 0`,
   )
-  db.exec(`UPDATE business_transactions SET amount = gross_amount WHERE (amount IS NULL OR amount = 0) AND gross_amount <> 0`)
-  db.exec(`UPDATE ranks SET is_active = 1 WHERE is_active IS NULL`)
-  db.exec(`UPDATE wallet_accounts SET pending_balance = 0 WHERE pending_balance IS NULL`)
-  db.exec(`UPDATE wallet_accounts SET lifetime_credited = 0 WHERE lifetime_credited IS NULL`)
-  db.exec(`UPDATE wallet_accounts SET lifetime_debited = 0 WHERE lifetime_debited IS NULL`)
-  db.exec(
-    `UPDATE withdrawal_requests SET created_at = COALESCE(created_at, requested_at, datetime('now'))
+  await db.exec(
+    `UPDATE business_transactions SET amount = gross_amount WHERE (amount IS NULL OR amount = 0) AND gross_amount <> 0`,
+  )
+  await db.exec(`UPDATE ranks SET is_active = 1 WHERE is_active IS NULL`)
+  await db.exec(`UPDATE wallet_accounts SET pending_balance = 0 WHERE pending_balance IS NULL`)
+  await db.exec(`UPDATE wallet_accounts SET lifetime_credited = 0 WHERE lifetime_credited IS NULL`)
+  await db.exec(`UPDATE wallet_accounts SET lifetime_debited = 0 WHERE lifetime_debited IS NULL`)
+  await db.exec(
+    `UPDATE withdrawal_requests SET created_at = COALESCE(created_at, requested_at, NOW())
      WHERE created_at IS NULL`,
   )
-  db.exec(
-    `UPDATE withdrawal_requests SET updated_at = COALESCE(updated_at, processed_at, created_at, datetime('now'))
+  await db.exec(
+    `UPDATE withdrawal_requests SET updated_at = COALESCE(updated_at, processed_at, created_at, NOW())
      WHERE updated_at IS NULL`,
   )
 }
 
-export function transaction<T>(fn: () => T): T {
-  db.exec('BEGIN')
+export async function migrate(): Promise<void> {
+  const connection = await getPool().getConnection()
   try {
-    const result = fn()
-    db.exec('COMMIT')
-    return result
-  } catch (error) {
-    db.exec('ROLLBACK')
-    throw error
+    await connection.query('SET FOREIGN_KEY_CHECKS = 0')
+    for (const statement of convertSchema(SCHEMA).split(';')) {
+      const sql = statement.trim()
+      if (!sql) continue
+      try {
+        await connection.query(sql)
+      } catch (error) {
+        if (isIgnorableSchemaError(error)) continue
+        throw error
+      }
+    }
+    await connection.query('SET FOREIGN_KEY_CHECKS = 1')
+  } finally {
+    connection.release()
   }
+
+  await applyColumnMigrations()
+}
+
+export async function tableExists(table: string): Promise<boolean> {
+  const [rows] = await getPool().query(
+    `SELECT TABLE_NAME FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+    [table],
+  )
+  return Array.isArray(rows) && rows.length > 0
 }
 
 export function nowIso(): string {
@@ -551,5 +768,9 @@ export function nowIso(): string {
 }
 
 export function serverPaths() {
-  return { serverRoot, databaseFile: config.databaseFile, uploadsDir: config.uploadsDir }
+  return {
+    serverRoot: config.serverRoot,
+    database: `${config.db.host}:${config.db.port}/${config.db.name}`,
+    uploadsDir: config.uploadsDir,
+  }
 }

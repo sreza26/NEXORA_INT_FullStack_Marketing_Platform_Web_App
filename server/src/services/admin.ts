@@ -1,4 +1,4 @@
-import { db } from '../db/index.js'
+import { db, transaction } from '../db/index.js'
 import { config, type GenerationRate } from '../config/index.js'
 import { postLedger, reverseLedger } from '../models/ledger.js'
 import { decryptSecret } from '../utils/crypto.js'
@@ -55,16 +55,16 @@ export function ledgerStatus(raw: string | null | undefined): string {
   return raw ?? 'completed'
 }
 
-export function recordAudit(
+export async function recordAudit(
   actorId: number,
   action: string,
   subjectType: string | null,
   subjectId: number | null,
   payload: unknown,
   ipAddress?: string | null,
-): void {
+): Promise<void> {
   const body = JSON.stringify(payload ?? {})
-  db.prepare(
+  await db.prepare(
     `INSERT INTO audit_logs (actor_id, action, subject_type, subject_id, payload, auditable_type, auditable_id, new_values, ip_address)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(actorId, action, subjectType, subjectId, body, subjectType, subjectId, body, ipAddress ?? null)
@@ -100,10 +100,10 @@ const NOT_DEVELOPER_USER = `NOT EXISTS (
   WHERE urd.user_id = u.id AND rd.name = 'developer'
 )`
 
-export function isDeveloperUser(userId: number): boolean {
-  return !!db
+export async function isDeveloperUser(userId: number): Promise<boolean> {
+  return !!(await db
     .prepare("SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND r.name = 'developer'")
-    .get(userId)
+    .get(userId))
 }
 
 export function pageParams(page?: unknown, perPage?: unknown): { page: number; perPage: number } {
@@ -116,34 +116,34 @@ export function pageParams(page?: unknown, perPage?: unknown): { page: number; p
 /* Dashboard                                                           */
 /* ------------------------------------------------------------------ */
 
-export function countRows(sql: string, ...params: unknown[]): number {
-  const row = db.prepare(sql).get(...(params as never[])) as { c: number } | undefined
+export async function countRows(sql: string, ...params: unknown[]): Promise<number> {
+  const row = await db.prepare(sql).get(...(params as never[])) as { c: number } | undefined
   return num(row?.c)
 }
 
-export function sumOf(sql: string, ...params: unknown[]): number {
-  const row = db.prepare(sql).get(...(params as never[])) as { t: number } | undefined
+export async function sumOf(sql: string, ...params: unknown[]): Promise<number> {
+  const row = await db.prepare(sql).get(...(params as never[])) as { t: number } | undefined
   return num(row?.t)
 }
 
-export function walletTotals(): { balance: number; pending: number; credited: number; debited: number } {
+export async function walletTotals(): Promise<{ balance: number; pending: number; credited: number; debited: number }> {
   return {
-    balance: sumOf('SELECT COALESCE(SUM(balance), 0) AS t FROM wallet_accounts'),
-    pending: sumOf('SELECT COALESCE(SUM(pending_balance), 0) AS t FROM wallet_accounts'),
-    credited: sumOf('SELECT COALESCE(SUM(lifetime_credited), 0) AS t FROM wallet_accounts'),
-    debited: sumOf('SELECT COALESCE(SUM(lifetime_debited), 0) AS t FROM wallet_accounts'),
+    balance: await sumOf('SELECT COALESCE(SUM(balance), 0) AS t FROM wallet_accounts'),
+    pending: await sumOf('SELECT COALESCE(SUM(pending_balance), 0) AS t FROM wallet_accounts'),
+    credited: await sumOf('SELECT COALESCE(SUM(lifetime_credited), 0) AS t FROM wallet_accounts'),
+    debited: await sumOf('SELECT COALESCE(SUM(lifetime_debited), 0) AS t FROM wallet_accounts'),
   }
 }
 
-export function platformVolume(): number {
+export async function platformVolume(): Promise<number> {
   return round2(
-    sumOf(
-      `SELECT COALESCE(SUM(eligible_amount), 0) AS t FROM business_transactions WHERE status IN ('verified', 'approved')`,
-    ),
+    await sumOf(
+            `SELECT COALESCE(SUM(eligible_amount), 0) AS t FROM business_transactions WHERE status IN ('verified', 'approved')`,
+          ),
   )
 }
 
-export function monthlySeries(months = 6): { labels: string[]; registrations: number[]; volume: number[] } {
+export async function monthlySeries(months = 6): Promise<{ labels: string[]; registrations: number[]; volume: number[] }> {
   const labels: string[] = []
   const registrations: number[] = []
   const volume: number[] = []
@@ -154,18 +154,18 @@ export function monthlySeries(months = 6): { labels: string[]; registrations: nu
     const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`
     labels.push(key)
     registrations.push(
-      countRows(
-        `SELECT COUNT(*) AS c FROM users u WHERE u.status = 'active' AND substr(u.registered_at, 1, 7) = ? AND ${NOT_DEVELOPER_USER}`,
-        key,
-      ),
+      await countRows(
+                `SELECT COUNT(*) AS c FROM users u WHERE u.status = 'active' AND substr(u.registered_at, 1, 7) = ? AND ${NOT_DEVELOPER_USER}`,
+                key,
+              ),
     )
     volume.push(
       round2(
-        sumOf(
-          `SELECT COALESCE(SUM(eligible_amount), 0) AS t FROM business_transactions
+        await sumOf(
+                    `SELECT COALESCE(SUM(eligible_amount), 0) AS t FROM business_transactions
            WHERE substr(verified_at, 1, 7) = ? AND status IN ('verified', 'approved')`,
-          key,
-        ),
+                    key,
+                  ),
       ),
     )
   }
@@ -173,42 +173,42 @@ export function monthlySeries(months = 6): { labels: string[]; registrations: nu
   return { labels, registrations, volume }
 }
 
-export function pendingCounts() {
+export async function pendingCounts() {
   return {
-    pendingVerifications: countRows(`SELECT COUNT(*) AS c FROM users WHERE verification_status = 'pending'`),
-    pendingTransactions: countRows(`SELECT COUNT(*) AS c FROM business_transactions WHERE status = 'pending'`),
-    pendingCommissions: countRows(`SELECT COUNT(*) AS c FROM commissions WHERE status = 'pending'`),
-    pendingSalary: countRows(`SELECT COUNT(*) AS c FROM salary_payouts WHERE status = 'pending'`),
-    pendingWithdrawals: countRows(`SELECT COUNT(*) AS c FROM withdrawal_requests WHERE status = 'pending'`),
+    pendingVerifications: await countRows(`SELECT COUNT(*) AS c FROM users WHERE verification_status = 'pending'`),
+    pendingTransactions: await countRows(`SELECT COUNT(*) AS c FROM business_transactions WHERE status = 'pending'`),
+    pendingCommissions: await countRows(`SELECT COUNT(*) AS c FROM commissions WHERE status = 'pending'`),
+    pendingSalary: await countRows(`SELECT COUNT(*) AS c FROM salary_payouts WHERE status = 'pending'`),
+    pendingWithdrawals: await countRows(`SELECT COUNT(*) AS c FROM withdrawal_requests WHERE status = 'pending'`),
   }
 }
 
-export function jobRunRows(limit = 10) {
-  return db
+export async function jobRunRows(limit = 10): Promise<Array<Record<string, unknown>>> {
+  return (await db
     .prepare(
       `SELECT id, job_name, status, processed_count, started_at, finished_at, host, error_message
        FROM scheduled_job_runs ORDER BY COALESCE(started_at, created_at) DESC, id DESC LIMIT ?`,
     )
-    .all(limit) as unknown as Array<Record<string, unknown>>
+    .all(limit)) as unknown as Array<Record<string, unknown>>
 }
 
-export function platformSummary() {
+export async function platformSummary() {
   const notDeveloper = `NOT EXISTS (
     SELECT 1 FROM user_roles urd JOIN roles rd ON rd.id = urd.role_id
     WHERE urd.user_id = users.id AND rd.name = 'developer'
   )`
-  const members = countRows(`SELECT COUNT(*) AS c FROM users WHERE status <> 'terminated' AND ${notDeveloper}`)
-  const activeMembers = countRows(`SELECT COUNT(*) AS c FROM users WHERE status = 'active' AND ${notDeveloper}`)
-  const pending = pendingCounts()
-  const series = monthlySeries(6)
+  const members = await countRows(`SELECT COUNT(*) AS c FROM users WHERE status <> 'terminated' AND ${notDeveloper}`)
+  const activeMembers = await countRows(`SELECT COUNT(*) AS c FROM users WHERE status = 'active' AND ${notDeveloper}`)
+  const pending = await pendingCounts()
+  const series = await monthlySeries(6)
 
   return {
     members,
     activeMembers,
     ...pending,
-    platformVolume: platformVolume(),
-    walletTotals: walletTotals(),
-    recentJobRuns: jobRunRows(10),
+    platformVolume: await platformVolume(),
+    walletTotals: await walletTotals(),
+    recentJobRuns: await jobRunRows(10),
     months: 6,
     registrations: { labels: series.labels, values: series.registrations },
     volume: { labels: series.labels, values: series.volume },
@@ -219,7 +219,7 @@ export function platformSummary() {
 /* Members                                                             */
 /* ------------------------------------------------------------------ */
 
-export function listMembersPage(input: { q?: string; status?: string; verification?: string; page?: number; perPage?: number }) {
+export async function listMembersPage(input: { q?: string; status?: string; verification?: string; page?: number; perPage?: number }) {
   const { page, perPage } = pageParams(input.page, input.perPage)
   const where: string[] = [NOT_DEVELOPER_USER]
   const params: unknown[] = []
@@ -240,9 +240,9 @@ export function listMembersPage(input: { q?: string; status?: string; verificati
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  const total = countRows(`SELECT COUNT(*) AS c FROM users u ${whereSql}`, ...params)
+  const total = await countRows(`SELECT COUNT(*) AS c FROM users u ${whereSql}`, ...params)
 
-  const rows = db
+  const rows = (await db
     .prepare(
       `SELECT u.id, u.name, u.email, u.member_code, u.status, u.verification_status, u.registered_at, u.created_at,
               u.sponsor_id, u.current_rank_id, r.name AS rank_name, s.name AS sponsor_name, s.member_code AS sponsor_code
@@ -252,7 +252,7 @@ export function listMembersPage(input: { q?: string; status?: string; verificati
        ${whereSql}
        ORDER BY u.id DESC LIMIT ? OFFSET ?`,
     )
-    .all(...(params as never[]), perPage, (page - 1) * perPage) as unknown as Array<Record<string, unknown>>
+    .all(...(params as never[]), perPage, (page - 1) * perPage)) as unknown as Array<Record<string, unknown>>
 
   return {
     ...paginate(rows, total, page, perPage),
@@ -261,52 +261,54 @@ export function listMembersPage(input: { q?: string; status?: string; verificati
   }
 }
 
-export function memberDetail(id: number) {
-  const member = db
+export async function memberDetail(id: number) {
+  const member = (await db
     .prepare(
       `SELECT u.*, r.name AS rank_name FROM users u LEFT JOIN ranks r ON r.id = u.current_rank_id WHERE u.id = ?`,
     )
-    .get(id) as unknown as Record<string, unknown> | undefined
+    .get(id)) as unknown as Record<string, unknown> | undefined
   if (!member) return null
 
-  const profile = (db.prepare('SELECT * FROM member_profiles WHERE member_id = ?').get(id) as unknown as Record<string, unknown>) ?? {}
+  const profile =
+    ((await db.prepare('SELECT * FROM member_profiles WHERE member_id = ?').get(id)) as unknown as Record<string, unknown>) ??
+    {}
   const roles = (
-    db
+    (await db
       .prepare('SELECT r.name FROM roles r JOIN user_roles ur ON ur.role_id = r.id WHERE ur.user_id = ? ORDER BY r.name')
-      .all(id) as unknown as Array<{ name: string }>
+      .all(id)) as unknown as Array<{ name: string }>
   ).map((r) => r.name)
 
   const sponsor = member.sponsor_id
-    ? (db.prepare('SELECT id, name, member_code FROM users WHERE id = ?').get(Number(member.sponsor_id)) as unknown as Record<string, unknown>)
+    ? (await db.prepare('SELECT id, name, member_code FROM users WHERE id = ?').get(Number(member.sponsor_id)) as unknown as Record<string, unknown>)
     : null
 
-  const direct = db
+  const direct = (await db
     .prepare(
       `SELECT u.id, u.name, u.member_code, u.registered_at, u.created_at, r.name AS rank_name
        FROM users u LEFT JOIN ranks r ON r.id = u.current_rank_id
        WHERE u.sponsor_id = ? ORDER BY u.id ASC LIMIT 30`,
     )
-    .all(id) as unknown as Array<Record<string, unknown>>
+    .all(id)) as unknown as Array<Record<string, unknown>>
 
-  const generations = downlineByGeneration(id)
+  const generations = await downlineByGeneration(id)
   const downlineCount = [...generations.values()].reduce((total, ids) => total + ids.length, 0)
 
   const volume = round2(
-    sumOf(
-      `SELECT COALESCE(SUM(bt.eligible_amount), 0) AS t
+    await sumOf(
+            `SELECT COALESCE(SUM(bt.eligible_amount), 0) AS t
        FROM business_transactions bt
        JOIN referral_closures rc ON rc.descendant_id = bt.member_id
        WHERE rc.ancestor_id = ? AND bt.status IN ('verified', 'approved')`,
-      id,
-    ),
+            id,
+          ),
   )
 
-  const recentTransactions = db
+  const recentTransactions = (await db
     .prepare(
       `SELECT id, reference, gross_amount, eligible_amount, amount, type, description, status, created_at
        FROM business_transactions WHERE member_id = ? ORDER BY id DESC LIMIT 10`,
     )
-    .all(id) as unknown as Array<Record<string, unknown>>
+    .all(id)) as unknown as Array<Record<string, unknown>>
 
   return {
     member: {
@@ -324,7 +326,7 @@ export function memberDetail(id: number) {
   }
 }
 
-export function updateMemberDetails(
+export async function updateMemberDetails(
   id: number,
   data: {
     name: string
@@ -337,13 +339,13 @@ export function updateMemberDetails(
     emergency_contact?: string | null
   },
 ) {
-  const member = db.prepare('SELECT status FROM users WHERE id = ?').get(id) as { status: string } | undefined
+  const member = await db.prepare('SELECT status FROM users WHERE id = ?').get(id) as { status: string } | undefined
   if (!member) return null
 
   const previousStatus = member.status
   const suspended = data.status === 'suspended'
 
-  db.prepare(
+  await db.prepare(
     `UPDATE users SET name = ?, email = ?, phone = ?, status = ?, suspended_at = ?, suspension_reason = ?, updated_at = datetime('now')
      WHERE id = ?`,
   ).run(
@@ -356,7 +358,7 @@ export function updateMemberDetails(
     id,
   )
 
-  db.prepare(
+  await db.prepare(
     `INSERT INTO member_profiles (member_id, full_name, country, city, address_line, emergency_contact, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
      ON CONFLICT(member_id) DO UPDATE SET
@@ -371,40 +373,40 @@ export function updateMemberDetails(
   return { previousStatus }
 }
 
-export function verifyMemberIdentity(id: number, decision: 'verified' | 'rejected') {
-  db.prepare(`UPDATE users SET verification_status = ?, updated_at = datetime('now') WHERE id = ?`).run(decision, id)
+export async function verifyMemberIdentity(id: number, decision: 'verified' | 'rejected') {
+  await db.prepare(`UPDATE users SET verification_status = ?, updated_at = datetime('now') WHERE id = ?`).run(decision, id)
 }
 
-export function suspendMember(id: number, reason: string) {
-  db.prepare(
+export async function suspendMember(id: number, reason: string) {
+  await db.prepare(
     `UPDATE users SET status = 'suspended', suspended_at = datetime('now'), suspension_reason = ?, updated_at = datetime('now') WHERE id = ?`,
   ).run(reason, id)
 }
 
-export function activateMember(id: number) {
-  db.prepare(
+export async function activateMember(id: number) {
+  await db.prepare(
     `UPDATE users SET status = 'active', suspended_at = NULL, suspension_reason = NULL, updated_at = datetime('now') WHERE id = ?`,
   ).run(id)
 }
 
-export function changeSponsor(id: number, sponsorId: number) {
-  db.prepare(`UPDATE users SET sponsor_id = ?, updated_at = datetime('now') WHERE id = ?`).run(sponsorId, id)
-  rebuildAllReferralClosures()
+export async function changeSponsor(id: number, sponsorId: number) {
+  await db.prepare(`UPDATE users SET sponsor_id = ?, updated_at = datetime('now') WHERE id = ?`).run(sponsorId, id)
+  await rebuildAllReferralClosures()
 }
 
-export function deleteMember(id: number) {
-  const member = db.prepare('SELECT name, email, member_code, status FROM users WHERE id = ?').get(id) as
+export async function deleteMember(id: number) {
+  const member = await db.prepare('SELECT name, email, member_code, status FROM users WHERE id = ?').get(id) as
     | { name: string; email: string; member_code: string; status: string }
     | undefined
   if (!member) return null
 
-  db.prepare('DELETE FROM users WHERE id = ?').run(id)
-  rebuildAllReferralClosures()
+  await db.prepare('DELETE FROM users WHERE id = ?').run(id)
+  await rebuildAllReferralClosures()
   return member
 }
 
-export function pendingVerifications() {
-  const rows = db
+export async function pendingVerifications() {
+  const rows = (await db
     .prepare(
       `SELECT u.id, u.name, u.email, u.member_code, u.phone, u.verification_status, u.updated_at, u.created_at,
               p.full_name, p.nid_number, p.country, p.city, p.nid_document_path, p.selfie_document_path
@@ -412,7 +414,7 @@ export function pendingVerifications() {
        WHERE u.verification_status <> 'verified' AND u.status <> 'terminated' AND ${NOT_DEVELOPER_USER}
        ORDER BY u.verification_status = 'pending' DESC, u.updated_at DESC, u.id DESC`,
     )
-    .all() as unknown as Array<Record<string, unknown>>
+    .all()) as unknown as Array<Record<string, unknown>>
 
   return { items: rows, total: rows.length }
 }
@@ -421,8 +423,8 @@ export function pendingVerifications() {
 /* Roles                                                               */
 /* ------------------------------------------------------------------ */
 
-export function rolesOverview(search = '', includeDeveloper = false) {
-  const roles = db
+export async function rolesOverview(search = '', includeDeveloper = false) {
+  const roles = (await db
     .prepare(
       `SELECT r.id, r.name, r.label, r.description,
               (SELECT COUNT(*) FROM permission_role pr WHERE pr.role_id = r.id) AS permissions_count
@@ -430,10 +432,10 @@ export function rolesOverview(search = '', includeDeveloper = false) {
        ${includeDeveloper ? '' : "WHERE r.name <> 'developer'"}
        ORDER BY r.name`,
     )
-    .all() as unknown as Array<Record<string, unknown>>
+    .all()) as unknown as Array<Record<string, unknown>>
 
   const like = `%${search.trim().toLowerCase()}%`
-  const users = db
+  const users = (await db
     .prepare(
       `SELECT u.id, u.name, u.email,
               (SELECT GROUP_CONCAT(r.name) FROM roles r JOIN user_roles ur ON ur.role_id = r.id WHERE ur.user_id = u.id) AS role_names
@@ -442,7 +444,7 @@ export function rolesOverview(search = '', includeDeveloper = false) {
          ${includeDeveloper ? '' : `AND ${NOT_DEVELOPER_USER}`}
        ORDER BY u.id DESC LIMIT 200`,
     )
-    .all(search.trim(), like, like) as unknown as Array<Record<string, unknown>>
+    .all(search.trim(), like, like)) as unknown as Array<Record<string, unknown>>
 
   return {
     roles,
@@ -453,12 +455,12 @@ export function rolesOverview(search = '', includeDeveloper = false) {
   }
 }
 
-export function assignRole(userId: number, role: string) {
-  const roleRow = db.prepare('SELECT id FROM roles WHERE name = ?').get(role) as { id: number } | undefined
+export async function assignRole(userId: number, role: string) {
+  const roleRow = await db.prepare('SELECT id FROM roles WHERE name = ?').get(role) as { id: number } | undefined
   if (!roleRow) return false
-  db.prepare('DELETE FROM user_roles WHERE user_id = ?').run(userId)
+  await db.prepare('DELETE FROM user_roles WHERE user_id = ?').run(userId)
   if (role !== 'member') {
-    db.prepare('INSERT OR IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)').run(userId, roleRow.id)
+    await db.prepare('INSERT OR IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)').run(userId, roleRow.id)
   }
   return true
 }
@@ -467,7 +469,7 @@ export function assignRole(userId: number, role: string) {
 /* Transactions                                                        */
 /* ------------------------------------------------------------------ */
 
-export function transactionsPage(input: { q?: string; status?: string; page?: number; perPage?: number }) {
+export async function transactionsPage(input: { q?: string; status?: string; page?: number; perPage?: number }) {
   const { page, perPage } = pageParams(input.page, input.perPage)
   const where: string[] = []
   const params: unknown[] = []
@@ -484,19 +486,19 @@ export function transactionsPage(input: { q?: string; status?: string; page?: nu
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  const total = countRows(
-    `SELECT COUNT(*) AS c FROM business_transactions t JOIN users u ON u.id = t.member_id ${whereSql}`,
-    ...(params as unknown[]),
-  )
+  const total = await countRows(
+      `SELECT COUNT(*) AS c FROM business_transactions t JOIN users u ON u.id = t.member_id ${whereSql}`,
+      ...(params as unknown[]),
+    )
 
-  const rows = db
+  const rows = (await db
     .prepare(
       `SELECT t.id, t.member_id, t.reference, t.gross_amount, t.eligible_amount, t.amount, t.type, t.description,
               t.status, t.created_at, t.verified_at, u.name AS member_name, u.member_code
        FROM business_transactions t JOIN users u ON u.id = t.member_id
        ${whereSql} ORDER BY t.id DESC LIMIT ? OFFSET ?`,
     )
-    .all(...(params as never[]), perPage, (page - 1) * perPage) as unknown as Array<Record<string, unknown>>
+    .all(...(params as never[]), perPage, (page - 1) * perPage)) as unknown as Array<Record<string, unknown>>
 
   return {
     ...paginate(
@@ -510,20 +512,22 @@ export function transactionsPage(input: { q?: string; status?: string; page?: nu
   }
 }
 
-export function createTransaction(input: {
+export async function createTransaction(input: {
   memberCode: string
   type: string
   grossAmount: number
   eligibleAmount: number
   description?: string | null
 }) {
-  const member = db
+  const member = (await db
     .prepare('SELECT id, name, member_code FROM users WHERE member_code = ?')
-    .get(input.memberCode.trim().toUpperCase()) as { id: number; name: string; member_code: string } | undefined
+    .get(input.memberCode.trim().toUpperCase())) as
+    | { id: number; name: string; member_code: string }
+    | undefined
   if (!member) return null
 
   const reference = `TXN-${Date.now()}-${member.id}`
-  const info = db
+  const info = await db
     .prepare(
       `INSERT INTO business_transactions (member_id, reference, gross_amount, eligible_amount, amount, type, description, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
@@ -541,41 +545,41 @@ export function createTransaction(input: {
   return { id: Number(info.lastInsertRowid), reference, member }
 }
 
-export function verifyTransaction(id: number, eligibleAmount?: number | null) {
-  const transaction = db.prepare('SELECT * FROM business_transactions WHERE id = ?').get(id) as
+export async function verifyTransaction(id: number, eligibleAmount?: number | null) {
+  const transaction = await db.prepare('SELECT * FROM business_transactions WHERE id = ?').get(id) as
     | Record<string, unknown>
     | undefined
   if (!transaction) return null
 
   const eligible = eligibleAmount === undefined || eligibleAmount === null ? num(transaction.eligible_amount) : eligibleAmount
-  db.prepare(
+  await db.prepare(
     `UPDATE business_transactions SET status = 'approved', eligible_amount = ?, amount = ?, verified_at = datetime('now') WHERE id = ?`,
   ).run(eligible, num(transaction.gross_amount) || eligible, id)
 
   return { id, eligible, memberId: num(transaction.member_id) }
 }
 
-export function rejectTransaction(id: number) {
-  db.prepare(`UPDATE business_transactions SET status = 'rejected' WHERE id = ?`).run(id)
+export async function rejectTransaction(id: number) {
+  await db.prepare(`UPDATE business_transactions SET status = 'rejected' WHERE id = ?`).run(id)
 }
 
-export function reverseTransaction(id: number) {
-  const transaction = db.prepare('SELECT * FROM business_transactions WHERE id = ?').get(id) as
+export async function reverseTransaction(id: number) {
+  const transaction = await db.prepare('SELECT * FROM business_transactions WHERE id = ?').get(id) as
     | Record<string, unknown>
     | undefined
   if (!transaction) return null
 
-  db.prepare(`UPDATE business_transactions SET status = 'refunded' WHERE id = ?`).run(id)
-  db.prepare(
+  await db.prepare(`UPDATE business_transactions SET status = 'refunded' WHERE id = ?`).run(id)
+  await db.prepare(
     `UPDATE commissions SET status = 'reversed', amount = -amount WHERE source_transaction_id = ? AND status <> 'reversed'`,
   ).run(id)
 
-  const commissions = db
+  const commissions = (await db
     .prepare('SELECT * FROM commissions WHERE source_transaction_id = ?')
-    .all(id) as unknown as Array<Record<string, unknown>>
+    .all(id)) as unknown as Array<Record<string, unknown>>
   for (const commission of commissions) {
     if (commission.status === 'reversed') {
-      reverseLedger('commission', num(commission.id), `Commission #${commission.id} reversed with transaction`)
+      await reverseLedger('commission', num(commission.id), `Commission #${commission.id} reversed with transaction`)
     }
   }
 
@@ -586,7 +590,7 @@ export function reverseTransaction(id: number) {
 /* Ledger, deposits, withdrawals                                      */
 /* ------------------------------------------------------------------ */
 
-export function ledgerEntries(input: { q?: string; type?: string }) {
+export async function ledgerEntries(input: { q?: string; type?: string }) {
   const where: string[] = []
   const params: unknown[] = []
   const search = (input.q ?? '').trim()
@@ -602,14 +606,14 @@ export function ledgerEntries(input: { q?: string; type?: string }) {
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  const rows = db
+  const rows = (await db
     .prepare(
       `SELECT l.id, l.member_id, l.type, l.direction, l.amount, l.balance_after, l.reference_type, l.reference_id,
               l.description, l.status, l.created_at, u.name AS member_name, u.member_code
        FROM ledger_entries l JOIN users u ON u.id = l.member_id
        ${whereSql} ORDER BY l.id DESC LIMIT 500`,
     )
-    .all(...(params as never[])) as unknown as Array<Record<string, unknown>>
+    .all(...(params as never[]))) as unknown as Array<Record<string, unknown>>
 
   return {
     items: rows.map((row) => ({ ...row, status: ledgerStatus(row.status as string) })),
@@ -618,54 +622,54 @@ export function ledgerEntries(input: { q?: string; type?: string }) {
   }
 }
 
-export function depositsPage(status?: string) {
+export async function depositsPage(status?: string) {
   const params: unknown[] = []
   let where = ''
   if (status) {
     where = 'WHERE d.status = ?'
     params.push(status)
   }
-  const rows = db
+  const rows = (await db
     .prepare(
       `SELECT d.id, d.member_id, d.reference, d.amount, d.currency, d.method, d.status, d.hold_until, d.notes,
               d.submitted_at, d.created_at, u.name AS member_name, u.member_code
        FROM deposits d JOIN users u ON u.id = d.member_id
        ${where} ORDER BY d.id DESC LIMIT 500`,
     )
-    .all(...(params as never[])) as unknown as Array<Record<string, unknown>>
+    .all(...(params as never[]))) as unknown as Array<Record<string, unknown>>
 
   return {
     items: rows,
     total: rows.length,
     statuses: DEPOSIT_STATUSES,
-    policyEnabled: settingBool('deposits.enabled', true),
+    policyEnabled: await settingBool('deposits.enabled', true),
     holdDays: config.withdrawal.holdDays,
   }
 }
 
-export function verifyDeposit(id: number) {
-  db.prepare(`UPDATE deposits SET status = 'verified', verified_at = datetime('now') WHERE id = ?`).run(id)
+export async function verifyDeposit(id: number) {
+  await db.prepare(`UPDATE deposits SET status = 'verified', verified_at = datetime('now') WHERE id = ?`).run(id)
 }
 
-export function rejectDeposit(id: number) {
-  db.prepare(`UPDATE deposits SET status = 'rejected' WHERE id = ?`).run(id)
+export async function rejectDeposit(id: number) {
+  await db.prepare(`UPDATE deposits SET status = 'rejected' WHERE id = ?`).run(id)
 }
 
-export function withdrawalsList(status?: string) {
+export async function withdrawalsList(status?: string) {
   const params: unknown[] = []
   let where = ''
   if (status) {
     where = 'WHERE w.status = ?'
     params.push(status)
   }
-  const rows = db
+  const rows = (await db
     .prepare(
       `SELECT w.id, w.member_id, w.amount, w.method, w.account_details, w.status, w.notes, w.requested_at, w.created_at,
               w.processed_at, w.paid_at, w.reference, w.review_note, u.name AS member_name, u.member_code
        FROM withdrawal_requests w JOIN users u ON u.id = w.member_id
        ${where} ORDER BY w.id DESC LIMIT 500`,
     )
-    .all(...(params as never[])) as unknown as Array<Record<string, unknown>>
+    .all(...(params as never[]))) as unknown as Array<Record<string, unknown>>
 
   return rows.map((row) => ({
     ...row,
@@ -673,31 +677,31 @@ export function withdrawalsList(status?: string) {
   }))
 }
 
-export function approveWithdrawalRequest(id: number, adminId: number, note?: string | null) {
-  const request = db.prepare('SELECT * FROM withdrawal_requests WHERE id = ?').get(id) as
+export async function approveWithdrawalRequest(id: number, adminId: number, note?: string | null) {
+  const request = await db.prepare('SELECT * FROM withdrawal_requests WHERE id = ?').get(id) as
     | Record<string, unknown>
     | undefined
   if (!request) return null
   if (request.status !== 'pending') return null
 
-  db.prepare(
+  await db.prepare(
     `UPDATE withdrawal_requests SET status = 'approved', processed_at = datetime('now'), processed_by = ?,
        reviewed_by = ?, reviewed_at = datetime('now'), updated_at = datetime('now'),
        notes = COALESCE(?, notes), review_note = COALESCE(?, review_note) WHERE id = ?`,
   ).run(adminId, adminId, note ?? null, note ?? null, id)
-  db.prepare(`UPDATE ledger_entries SET status = 'approved' WHERE reference_type = 'withdrawal_request' AND reference_id = ?`).run(id)
+  await db.prepare(`UPDATE ledger_entries SET status = 'approved' WHERE reference_type = 'withdrawal_request' AND reference_id = ?`).run(id)
   return { id, status: 'approved' }
 }
 
-export function rejectWithdrawalRequest(id: number, adminId: number, reason?: string | null) {
-  const request = db.prepare('SELECT * FROM withdrawal_requests WHERE id = ?').get(id) as
+export async function rejectWithdrawalRequest(id: number, adminId: number, reason?: string | null) {
+  const request = await db.prepare('SELECT * FROM withdrawal_requests WHERE id = ?').get(id) as
     | Record<string, unknown>
     | undefined
   if (!request) return null
   if (request.status !== 'pending') return null
 
-  reverseLedger('withdrawal_request', id, `Withdrawal request #${id} rejected`)
-  db.prepare(
+  await reverseLedger('withdrawal_request', id, `Withdrawal request #${id} rejected`)
+  await db.prepare(
     `UPDATE withdrawal_requests SET status = 'rejected', processed_at = datetime('now'), processed_by = ?,
        reviewed_by = ?, reviewed_at = datetime('now'), updated_at = datetime('now'),
        notes = COALESCE(?, notes), review_note = COALESCE(?, review_note) WHERE id = ?`,
@@ -705,14 +709,14 @@ export function rejectWithdrawalRequest(id: number, adminId: number, reason?: st
   return { id, status: 'rejected' }
 }
 
-export function payWithdrawalRequest(id: number, adminId: number) {
-  const request = db.prepare('SELECT * FROM withdrawal_requests WHERE id = ?').get(id) as
+export async function payWithdrawalRequest(id: number, adminId: number) {
+  const request = await db.prepare('SELECT * FROM withdrawal_requests WHERE id = ?').get(id) as
     | Record<string, unknown>
     | undefined
   if (!request) return null
   if (request.status !== 'approved') return null
 
-  db.prepare(
+  await db.prepare(
     `UPDATE withdrawal_requests SET status = 'paid', paid_at = datetime('now'), processed_at = datetime('now'), processed_by = ?,
        paid_by = ?, updated_at = datetime('now') WHERE id = ?`,
   ).run(adminId, adminId, id)
@@ -723,25 +727,25 @@ export function payWithdrawalRequest(id: number, adminId: number) {
 /* Reconciliation                                                      */
 /* ------------------------------------------------------------------ */
 
-export function reconciliationRecords(limit = 200) {
-  const rows = db
+export async function reconciliationRecords(limit = 200) {
+  const rows = (await db
     .prepare(
       `SELECT r.id, r.member_id, r.expected_balance, r.ledger_sum, r.difference, r.status, r.notes, r.run_at,
               u.name AS member_name, u.member_code
        FROM reconciliation_records r LEFT JOIN users u ON u.id = r.member_id
        ORDER BY r.id DESC LIMIT ?`,
     )
-    .all(limit) as unknown as Array<Record<string, unknown>>
+    .all(limit)) as unknown as Array<Record<string, unknown>>
 
   return { items: rows, total: rows.length }
 }
 
-export function runReconciliation() {
-  const wallets = db
+export async function runReconciliation() {
+  const wallets = (await db
     .prepare(
       `SELECT w.member_id, w.balance, u.name AS member_name FROM wallet_accounts w JOIN users u ON u.id = w.member_id`,
     )
-    .all() as unknown as Array<{ member_id: number; balance: number; member_name: string }>
+    .all()) as unknown as Array<{ member_id: number; balance: number; member_name: string }>
 
   let mismatches = 0
   const insert = db.prepare(
@@ -751,17 +755,17 @@ export function runReconciliation() {
 
   for (const wallet of wallets) {
     const ledgerSum = round2(
-      sumOf(
-        `SELECT COALESCE(SUM(CASE WHEN direction = 'credit' THEN amount ELSE -amount END), 0) AS t
+      await sumOf(
+                `SELECT COALESCE(SUM(CASE WHEN direction = 'credit' THEN amount ELSE -amount END), 0) AS t
          FROM ledger_entries WHERE member_id = ? AND status <> 'reversed'`,
-        wallet.member_id,
-      ),
+                wallet.member_id,
+              ),
     )
     const expected = round2(num(wallet.balance))
     const difference = round2(expected - ledgerSum)
     const status = difference === 0 ? 'match' : 'mismatch'
     if (status !== 'match') mismatches += 1
-    insert.run(wallet.member_id, expected, ledgerSum, difference, status, status === 'match' ? null : 'Balance differs from the ledger sum')
+    await insert.run(wallet.member_id, expected, ledgerSum, difference, status, status === 'match' ? null : 'Balance differs from the ledger sum')
   }
 
   return { checked: wallets.length, mismatches }
@@ -771,53 +775,58 @@ export function runReconciliation() {
 /* Compensation plans                                                  */
 /* ------------------------------------------------------------------ */
 
-export function listPlans() {
-  const plans = db
+export async function listPlans(): Promise<any[]> {
+  const plans = (await db
     .prepare('SELECT * FROM compensation_plans ORDER BY version DESC, id DESC')
-    .all() as unknown as Array<Record<string, unknown>>
+    .all()) as unknown as Array<Record<string, unknown>>
 
-  const rates = db
+  const rates = (await db
     .prepare('SELECT * FROM compensation_plan_rates ORDER BY plan_id ASC, generation_from ASC')
-    .all() as unknown as Array<Record<string, unknown>>
+    .all()) as unknown as Array<Record<string, unknown>>
 
-  return plans.map((plan) => ({
-    ...plan,
-    eligible_transaction_types: plan.eligible_transaction_types
-      ? String(plan.eligible_transaction_types).split(',').filter(Boolean)
-      : [],
-    created_by_name:
-      (db.prepare('SELECT name FROM users WHERE id = ?').get(plan.created_by == null ? null : Number(plan.created_by)) as
-        | { name: string }
-        | undefined)?.name ?? 'system',
-    approved_by_name:
-      (db.prepare('SELECT name FROM users WHERE id = ?').get(plan.approved_by == null ? null : Number(plan.approved_by)) as
-        | { name: string }
-        | undefined)?.name ?? null,
-    rates: rates
-      .filter((rate) => rate.plan_id === plan.id)
-      .map((rate) => ({
-        generation_from: num(rate.generation_from),
-        generation_to: num(rate.generation_to),
-        rate: num(rate.rate),
-      })),
-  }))
+  return Promise.all(
+    plans.map(async (plan) => ({
+      ...plan,
+      eligible_transaction_types: plan.eligible_transaction_types
+        ? String(plan.eligible_transaction_types).split(',').filter(Boolean)
+        : [],
+      created_by_name:
+        ((
+          await db
+            .prepare('SELECT name FROM users WHERE id = ?')
+            .get(plan.created_by == null ? null : Number(plan.created_by))
+        ) as { name: string } | undefined)?.name ?? 'system',
+      approved_by_name:
+        ((
+          await db
+            .prepare('SELECT name FROM users WHERE id = ?')
+            .get(plan.approved_by == null ? null : Number(plan.approved_by))
+        ) as { name: string } | undefined)?.name ?? null,
+      rates: rates
+        .filter((rate) => rate.plan_id === plan.id)
+        .map((rate) => ({
+          generation_from: num(rate.generation_from),
+          generation_to: num(rate.generation_to),
+          rate: num(rate.rate),
+        })),
+    })),
+  )
 }
 
-export function planDetail(id: number) {
-  const plans = listPlans() as any[]
+export async function planDetail(id: number): Promise<any | null> {
+  const plans = await listPlans()
   return plans.find((plan) => plan.id === id) ?? null
 }
 
-export function activePlan() {
-  const plan = db.prepare(`SELECT * FROM compensation_plans WHERE is_active = 1 ORDER BY version DESC LIMIT 1`).get() as
-    | Record<string, unknown>
-    | undefined
+export async function activePlan() {
+  const plan = (await db
+    .prepare(`SELECT * FROM compensation_plans WHERE is_active = 1 ORDER BY version DESC LIMIT 1`)
+    .get()) as Record<string, unknown> | undefined
   if (!plan) return null
-  const detail = planDetail(num(plan.id)) as any
-  return detail ?? null
+  return await planDetail(num(plan.id))
 }
 
-export function createPlan(
+export async function createPlan(
   input: {
     name: string
     commissionBase: string
@@ -828,9 +837,10 @@ export function createPlan(
   },
   adminId: number,
 ) {
-  const version = num((db.prepare('SELECT COALESCE(MAX(version), 0) AS t FROM compensation_plans').get() as { t: number }).t) + 1
+  const version =
+    num(((await db.prepare('SELECT COALESCE(MAX(version), 0) AS t FROM compensation_plans').get()) as { t: number }).t) + 1
 
-  const info = db
+  const info = await db
     .prepare(
       `INSERT INTO compensation_plans (version, name, status, is_active, commission_base, eligible_transaction_types,
          effective_from, notes, created_by)
@@ -851,15 +861,15 @@ export function createPlan(
     'INSERT INTO compensation_plan_rates (plan_id, generation_from, generation_to, rate) VALUES (?, ?, ?, ?)',
   )
   for (const rate of input.rates) {
-    insertRate.run(planId, rate.generation_from, rate.generation_to, rate.rate)
+    await insertRate.run(planId, rate.generation_from, rate.generation_to, rate.rate)
   }
 
   return planId
 }
 
-export function activatePlan(id: number, adminId: number) {
-  db.prepare(`UPDATE compensation_plans SET status = 'archived', is_active = 0 WHERE is_active = 1`).run()
-  db.prepare(
+export async function activatePlan(id: number, adminId: number) {
+  await db.prepare(`UPDATE compensation_plans SET status = 'archived', is_active = 0 WHERE is_active = 1`).run()
+  await db.prepare(
     `UPDATE compensation_plans SET status = 'active', is_active = 1, activated_at = datetime('now'), approved_at = datetime('now'), approved_by = ?
      WHERE id = ?`,
   ).run(adminId, id)
@@ -869,7 +879,7 @@ export function activatePlan(id: number, adminId: number) {
 /* Commissions                                                         */
 /* ------------------------------------------------------------------ */
 
-export function commissionsPage(input: { q?: string; status?: string; page?: number; perPage?: number }) {
+export async function commissionsPage(input: { q?: string; status?: string; page?: number; perPage?: number }) {
   const { page, perPage } = pageParams(input.page, input.perPage)
   const where: string[] = []
   const params: unknown[] = []
@@ -886,14 +896,14 @@ export function commissionsPage(input: { q?: string; status?: string; page?: num
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  const total = countRows(
-    `SELECT COUNT(*) AS c FROM commissions c
+  const total = await countRows(
+      `SELECT COUNT(*) AS c FROM commissions c
      JOIN users r ON r.id = c.recipient_id
      LEFT JOIN business_transactions t ON t.id = c.source_transaction_id ${whereSql}`,
-    ...(params as unknown[]),
-  )
+      ...(params as unknown[]),
+    )
 
-  const rows = db
+  const rows = (await db
     .prepare(
       `SELECT c.id, c.recipient_id, c.source_member_id, c.source_transaction_id, c.generation, c.amount, c.rate,
               c.status, c.created_at, c.idempotency_key, r.name AS recipient_name, r.member_code AS recipient_code,
@@ -904,21 +914,21 @@ export function commissionsPage(input: { q?: string; status?: string; page?: num
        LEFT JOIN users su ON su.id = c.source_member_id
        ${whereSql} ORDER BY c.id DESC LIMIT ? OFFSET ?`,
     )
-    .all(...(params as never[]), perPage, (page - 1) * perPage) as unknown as Array<Record<string, unknown>>
+    .all(...(params as never[]), perPage, (page - 1) * perPage)) as unknown as Array<Record<string, unknown>>
 
   return { ...paginate(rows, total, page, perPage), statuses: COMMISSION_STATUSES }
 }
 
-export function commissionPreview(reference: string) {
-  const transaction = db
+export async function commissionPreview(reference: string) {
+  const transaction = (await db
     .prepare(
       `SELECT t.*, u.name AS member_name, u.member_code FROM business_transactions t JOIN users u ON u.id = t.member_id
        WHERE t.reference = ?`,
     )
-    .get(reference.trim()) as unknown as Record<string, unknown> | undefined
+    .get(reference.trim())) as unknown as Record<string, unknown> | undefined
   if (!transaction) return { transaction: null, preview: null }
 
-  const plan = activePlan() as any
+  const plan = await activePlan() as any
   const base =
     plan && plan.commission_base === 'gross_verified_amount'
       ? num(transaction.gross_amount)
@@ -933,7 +943,7 @@ export function commissionPreview(reference: string) {
     : config.commission.generationRates
 
   const memberId = num(transaction.member_id)
-  const sponsors = db.prepare('SELECT id, sponsor_id FROM users WHERE id = ?').get(memberId) as
+  const sponsors = (await db.prepare('SELECT id, sponsor_id FROM users WHERE id = ?').get(memberId)) as
     | { id: number; sponsor_id: number | null }
     | undefined
 
@@ -945,7 +955,7 @@ export function commissionPreview(reference: string) {
   while (currentSponsorId && generation <= limit) {
     const band = rates.find((r) => generation >= r.generation_from && generation <= r.generation_to)
     const rate = band ? band.rate : 0
-    const ancestor = db.prepare('SELECT id, name, status FROM users WHERE id = ?').get(currentSponsorId) as
+    const ancestor = await db.prepare('SELECT id, name, status FROM users WHERE id = ?').get(currentSponsorId) as
       | { id: number; name: string; status: string }
       | undefined
     recipients.push({
@@ -955,7 +965,7 @@ export function commissionPreview(reference: string) {
       rate,
       amount: round2(base * (rate / 100)),
     })
-    const next = db.prepare('SELECT sponsor_id FROM users WHERE id = ?').get(currentSponsorId) as
+    const next = await db.prepare('SELECT sponsor_id FROM users WHERE id = ?').get(currentSponsorId) as
       | { sponsor_id: number | null }
       | undefined
     currentSponsorId = next?.sponsor_id ?? null
@@ -972,73 +982,73 @@ export function commissionPreview(reference: string) {
   }
 }
 
-export function commissionRow(id: number) {
-  return db.prepare('SELECT * FROM commissions WHERE id = ?').get(id) as unknown as Record<string, unknown> | undefined
+export async function commissionRow(id: number) {
+  return await db.prepare('SELECT * FROM commissions WHERE id = ?').get(id) as unknown as Record<string, unknown> | undefined
 }
 
-export function approveCommission(id: number, adminId: number) {
-  const commission = commissionRow(id)
+export async function approveCommission(id: number, adminId: number) {
+  const commission = await commissionRow(id)
   if (!commission) return null
   if (commission.status !== 'pending') return null
 
   const amount = num(commission.amount)
-  postLedger({
-    memberId: num(commission.recipient_id),
-    type: 'commission',
-    direction: 'credit',
-    amount,
-    referenceType: 'commission',
-    referenceId: id,
-    description: `Generation ${num(commission.generation)} commission`,
-  })
+  await postLedger({
+        memberId: num(commission.recipient_id),
+        type: 'commission',
+        direction: 'credit',
+        amount,
+        referenceType: 'commission',
+        referenceId: id,
+        description: `Generation ${num(commission.generation)} commission`,
+      })
 
-  db.prepare(`UPDATE commissions SET status = 'approved', approved_by = ?, approved_at = datetime('now') WHERE id = ?`).run(
+  await db.prepare(`UPDATE commissions SET status = 'approved', approved_by = ?, approved_at = datetime('now') WHERE id = ?`).run(
     adminId,
     id,
   )
   return { id, status: 'approved' }
 }
 
-export function rejectCommission(id: number, adminId: number, reason?: string | null) {
-  const commission = commissionRow(id)
+export async function rejectCommission(id: number, adminId: number, reason?: string | null) {
+  const commission = await commissionRow(id)
   if (!commission) return null
   if (commission.status !== 'pending') return null
 
-  reverseLedger('commission', id, `Commission #${id} rejected`)
-  db.prepare(
+  await reverseLedger('commission', id, `Commission #${id} rejected`)
+  await db.prepare(
     `UPDATE commissions SET status = 'rejected', approved_by = ?, approved_at = datetime('now'), rejection_reason = ? WHERE id = ?`,
   ).run(adminId, reason ?? null, id)
   return { id, status: 'rejected' }
 }
 
-export function payCommission(id: number) {
-  const commission = commissionRow(id)
+export async function payCommission(id: number) {
+  const commission = await commissionRow(id)
   if (!commission) return null
   if (commission.status !== 'approved') return null
-  db.prepare(`UPDATE commissions SET status = 'paid', paid_at = datetime('now') WHERE id = ?`).run(id)
+  await db.prepare(`UPDATE commissions SET status = 'paid', paid_at = datetime('now') WHERE id = ?`).run(id)
   return { id, status: 'paid' }
 }
 
-export function commissionExceptions() {
-  const reversed = db
+export async function commissionExceptions() {
+  const reversed = (await db
     .prepare(
       `SELECT c.id, c.amount, c.recipient_id, u.name AS recipient_name, t.reference AS source_reference
        FROM commissions c LEFT JOIN users u ON u.id = c.recipient_id
        LEFT JOIN business_transactions t ON t.id = c.source_transaction_id
        WHERE c.status = 'reversed' ORDER BY c.id DESC LIMIT 100`,
     )
-    .all() as unknown as Array<Record<string, unknown>>
+    .all()) as unknown as Array<Record<string, unknown>>
 
-  const negative = db
+  const negative = (await db
     .prepare(
       `SELECT c.id, c.amount, c.recipient_id, u.name AS recipient_name, t.reference AS source_reference
        FROM commissions c LEFT JOIN users u ON u.id = c.recipient_id
        LEFT JOIN business_transactions t ON t.id = c.source_transaction_id
        WHERE c.amount < 0 ORDER BY c.id DESC LIMIT 100`,
     )
-    .all() as unknown as Array<Record<string, unknown>>
+    .all()) as unknown as Array<Record<string, unknown>>
 
-  const stuck = db
+  const stuck = (await db
     .prepare(
       `SELECT t.id, t.reference, t.eligible_amount, t.verified_at, u.name AS member_name, u.member_code
        FROM business_transactions t JOIN users u ON u.id = t.member_id
@@ -1048,7 +1058,7 @@ export function commissionExceptions() {
          AND t.verified_at <= datetime('now', '-1 day')
        ORDER BY t.id DESC LIMIT 100`,
     )
-    .all() as unknown as Array<Record<string, unknown>>
+    .all()) as unknown as Array<Record<string, unknown>>
 
   return {
     reversed: { items: reversed, total: reversed.length },
@@ -1061,12 +1071,12 @@ export function commissionExceptions() {
 /* Ranks                                                               */
 /* ------------------------------------------------------------------ */
 
-export function ranksAdmin() {
-  const ranks = db.prepare('SELECT * FROM ranks ORDER BY level ASC').all() as unknown as Array<Record<string, unknown>>
-  const requirements = db
+export async function ranksAdmin() {
+  const ranks = await db.prepare('SELECT * FROM ranks ORDER BY level ASC').all() as unknown as Array<Record<string, unknown>>
+  const requirements = (await db
     .prepare('SELECT * FROM rank_requirements ORDER BY rank_id ASC, sort_order ASC')
-    .all() as unknown as Array<Record<string, unknown>>
-  const targets = db.prepare('SELECT id, name FROM ranks').all() as unknown as Array<{ id: number; name: string }>
+    .all()) as unknown as Array<Record<string, unknown>>
+  const targets = await db.prepare('SELECT id, name FROM ranks').all() as unknown as Array<{ id: number; name: string }>
 
   return ranks.map((rank) => ({
     ...rank,
@@ -1084,73 +1094,73 @@ export function ranksAdmin() {
   }))
 }
 
-export function updateRank(id: number, monthlySalary: number, isActive: boolean) {
-  db.prepare(`UPDATE ranks SET salary = ?, is_active = ?, updated_at = datetime('now') WHERE id = ?`).run(
+export async function updateRank(id: number, monthlySalary: number, isActive: boolean) {
+  await db.prepare(`UPDATE ranks SET salary = ?, is_active = ?, updated_at = datetime('now') WHERE id = ?`).run(
     monthlySalary,
     isActive ? 1 : 0,
     id,
   )
 }
 
-export function rankReport(period: string) {
-  const snapshots = db
+export async function rankReport(period: string) {
+  const snapshots = (await db
     .prepare(
       `SELECT s.*, u.name AS member_name, u.member_code, r.name AS rank_name
        FROM member_rank_snapshots s JOIN users u ON u.id = s.member_id
        LEFT JOIN ranks r ON r.id = s.rank_id
        WHERE s.period = ? ORDER BY s.id DESC LIMIT 500`,
     )
-    .all(period) as unknown as Array<Record<string, unknown>>
+    .all(period)) as unknown as Array<Record<string, unknown>>
 
-  const distribution = db
+  const distribution = (await db
     .prepare(
       `SELECT r.level, r.name, COUNT(u.id) AS members_count FROM ranks r
        LEFT JOIN users u ON u.current_rank_id = r.id
        GROUP BY r.id ORDER BY r.level ASC`,
     )
-    .all() as unknown as Array<Record<string, unknown>>
+    .all()) as unknown as Array<Record<string, unknown>>
 
-  const qualifiedMembers = countRows(
-    `SELECT COUNT(DISTINCT member_id) AS c FROM member_rank_snapshots WHERE period = ?`,
-    period,
-  )
+  const qualifiedMembers = await countRows(
+      `SELECT COUNT(DISTINCT member_id) AS c FROM member_rank_snapshots WHERE period = ?`,
+      period,
+    )
 
   return { period, qualifiedMembers, distribution, snapshots }
 }
 
-export function recalculateRankReport(period: string) {
-  const members = db.prepare(`SELECT id FROM users WHERE status = 'active'`).all() as unknown as Array<{ id: number }>
+export async function recalculateRankReport(period: string) {
+  const members = await db.prepare(`SELECT id FROM users WHERE status = 'active'`).all() as unknown as Array<{ id: number }>
   let written = 0
 
   for (const member of members) {
-    const generations = downlineByGeneration(member.id)
+    const generations = await downlineByGeneration(member.id)
     const ids: number[] = []
     for (const list of generations.values()) ids.push(...list)
 
     const personalVolume = round2(
-      sumOf(
-        `SELECT COALESCE(SUM(eligible_amount), 0) AS t FROM business_transactions
+      await sumOf(
+                `SELECT COALESCE(SUM(eligible_amount), 0) AS t FROM business_transactions
          WHERE member_id = ? AND status IN ('verified', 'approved')`,
-        member.id,
-      ),
+                member.id,
+              ),
     )
     const groupVolume = round2(
       ids.length
-        ? sumOf(
-            `SELECT COALESCE(SUM(eligible_amount), 0) AS t FROM business_transactions
+        ? await sumOf(
+                        `SELECT COALESCE(SUM(eligible_amount), 0) AS t FROM business_transactions
              WHERE member_id IN (${ids.map(() => '?').join(',')}) AND status IN ('verified', 'approved')`,
-            ...(ids as unknown[]),
-          )
+                        ...(ids as unknown[]),
+                      )
         : 0,
     )
-    const directReferrals = countRows('SELECT COUNT(*) AS c FROM users WHERE sponsor_id = ?', member.id)
-    const userRow = db.prepare('SELECT current_rank_id FROM users WHERE id = ?').get(member.id) as { current_rank_id: number | null } | undefined
+    const directReferrals = await countRows('SELECT COUNT(*) AS c FROM users WHERE sponsor_id = ?', member.id)
+    const userRow = await db.prepare('SELECT current_rank_id FROM users WHERE id = ?').get(member.id) as { current_rank_id: number | null } | undefined
     const rank = userRow?.current_rank_id
-      ? (db.prepare('SELECT id, salary FROM ranks WHERE id = ?').get(userRow.current_rank_id) as { id: number; salary: number } | undefined)
+      ? (await db.prepare('SELECT id, salary FROM ranks WHERE id = ?').get(userRow.current_rank_id) as { id: number; salary: number } | undefined)
       : undefined
     const salary = rank ? num(rank.salary) : 0
 
-    db.prepare(
+    await db.prepare(
       `INSERT INTO member_rank_snapshots (member_id, rank_id, period, paid_rank_id, personal_volume, group_volume, direct_referrals, salary_eligible)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(member_id, period) DO UPDATE SET
@@ -1180,7 +1190,7 @@ export function recalculateRankReport(period: string) {
 /* Salary                                                              */
 /* ------------------------------------------------------------------ */
 
-export function salaryPage(input: { period?: string; status?: string }) {
+export async function salaryPage(input: { period?: string; status?: string }) {
   const where: string[] = []
   const params: unknown[] = []
   if (input.period) {
@@ -1193,7 +1203,7 @@ export function salaryPage(input: { period?: string; status?: string }) {
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
-  const rows = db
+  const rows = (await db
     .prepare(
       `SELECT p.id, p.member_id, p.period, p.amount, p.status, p.reason, p.created_at, p.processed_at,
               u.name AS member_name, u.member_code, r.name AS rank_name
@@ -1201,36 +1211,38 @@ export function salaryPage(input: { period?: string; status?: string }) {
        LEFT JOIN ranks r ON r.id = p.rank_id
        ${whereSql} ORDER BY p.id DESC LIMIT 500`,
     )
-    .all(...(params as never[])) as unknown as Array<Record<string, unknown>>
+    .all(...(params as never[]))) as unknown as Array<Record<string, unknown>>
 
-  const periods = db
+  const periods = (await db
     .prepare('SELECT period FROM salary_periods ORDER BY period DESC')
-    .all() as unknown as Array<{ period: string }>
+    .all()) as unknown as Array<{ period: string }>
 
   return { items: rows, total: rows.length, periods: periods.map((p) => p.period), statuses: SALARY_STATUSES }
 }
 
-export function generateSalary(period: string) {
-  db.prepare('INSERT OR IGNORE INTO salary_periods (period, status) VALUES (?, \'open\')').run(period)
-  const periodRow = db.prepare('SELECT id FROM salary_periods WHERE period = ?').get(period) as { id: number } | undefined
+export async function generateSalary(period: string) {
+  await db.prepare('INSERT OR IGNORE INTO salary_periods (period, status) VALUES (?, \'open\')').run(period)
+  const periodRow = (await db.prepare('SELECT id FROM salary_periods WHERE period = ?').get(period)) as
+    | { id: number }
+    | undefined
 
-  const members = db
+  const members = (await db
     .prepare(
       `SELECT u.id, r.id AS rank_id, r.salary FROM users u JOIN ranks r ON r.id = u.current_rank_id
        WHERE u.status = 'active' AND r.salary > 0`,
     )
-    .all() as unknown as Array<{ id: number; rank_id: number; salary: number }>
+    .all()) as unknown as Array<{ id: number; rank_id: number; salary: number }>
 
   let created = 0
   let total = 0
 
   for (const member of members) {
-    const existing = db
+    const existing = (await db
       .prepare('SELECT id FROM salary_payouts WHERE member_id = ? AND period = ?')
-      .get(member.id, period) as { id: number } | undefined
+      .get(member.id, period)) as { id: number } | undefined
     if (existing) continue
 
-    db.prepare(
+    await db.prepare(
       `INSERT INTO salary_payouts (member_id, rank_id, salary_period_id, period, amount, status)
        VALUES (?, ?, ?, ?, ?, 'pending')`,
     ).run(member.id, member.rank_id, periodRow?.id ?? null, period, member.salary)
@@ -1241,47 +1253,47 @@ export function generateSalary(period: string) {
   return { period, created, total: round2(total) }
 }
 
-export function salaryRow(id: number) {
-  return db.prepare('SELECT * FROM salary_payouts WHERE id = ?').get(id) as unknown as Record<string, unknown> | undefined
+export async function salaryRow(id: number) {
+  return await db.prepare('SELECT * FROM salary_payouts WHERE id = ?').get(id) as unknown as Record<string, unknown> | undefined
 }
 
-export function approveSalary(id: number, adminId: number) {
-  const payout = salaryRow(id)
+export async function approveSalary(id: number, adminId: number) {
+  const payout = await salaryRow(id)
   if (!payout) return null
   if (payout.status !== 'pending') return null
-  db.prepare(`UPDATE salary_payouts SET status = 'approved', processed_by = ?, processed_at = datetime('now') WHERE id = ?`).run(
+  await db.prepare(`UPDATE salary_payouts SET status = 'approved', processed_by = ?, processed_at = datetime('now') WHERE id = ?`).run(
     adminId,
     id,
   )
   return { id, status: 'approved' }
 }
 
-export function rejectSalary(id: number, adminId: number, reason?: string | null) {
-  const payout = salaryRow(id)
+export async function rejectSalary(id: number, adminId: number, reason?: string | null) {
+  const payout = await salaryRow(id)
   if (!payout) return null
   if (payout.status !== 'pending') return null
-  db.prepare(
+  await db.prepare(
     `UPDATE salary_payouts SET status = 'rejected', reason = ?, processed_by = ?, processed_at = datetime('now') WHERE id = ?`,
   ).run(reason ?? null, adminId, id)
   return { id, status: 'rejected' }
 }
 
-export function paySalary(id: number, adminId: number) {
-  const payout = salaryRow(id)
+export async function paySalary(id: number, adminId: number) {
+  const payout = await salaryRow(id)
   if (!payout) return null
   if (payout.status !== 'approved') return null
 
-  postLedger({
-    memberId: num(payout.member_id),
-    type: 'salary',
-    direction: 'credit',
-    amount: num(payout.amount),
-    referenceType: 'salary_payout',
-    referenceId: id,
-    description: `Monthly salary for ${payout.period}`,
-  })
+  await postLedger({
+        memberId: num(payout.member_id),
+        type: 'salary',
+        direction: 'credit',
+        amount: num(payout.amount),
+        referenceType: 'salary_payout',
+        referenceId: id,
+        description: `Monthly salary for ${payout.period}`,
+      })
 
-  db.prepare(`UPDATE salary_payouts SET status = 'paid', processed_by = ?, processed_at = datetime('now') WHERE id = ?`).run(
+  await db.prepare(`UPDATE salary_payouts SET status = 'paid', processed_by = ?, processed_at = datetime('now') WHERE id = ?`).run(
     adminId,
     id,
   )
@@ -1292,24 +1304,24 @@ export function paySalary(id: number, adminId: number) {
 /* Rewards                                                             */
 /* ------------------------------------------------------------------ */
 
-export function rewardsAdmin() {
-  const rewards = db
+export async function rewardsAdmin() {
+  const rewards = (await db
     .prepare(
       `SELECT r.*, (SELECT COUNT(*) FROM reward_claims rc WHERE rc.reward_id = r.id) AS claims_count
        FROM rewards r ORDER BY r.id DESC`,
     )
-    .all() as unknown as Array<Record<string, unknown>>
+    .all()) as unknown as Array<Record<string, unknown>>
 
-  const claims = db
+  const claims = (await db
     .prepare(
       `SELECT c.id, c.member_id, c.reward_id, c.cost, c.status, c.note, c.claimed_at, c.approved_at,
               u.name AS member_name, u.member_code, rw.title AS reward_name
        FROM reward_claims c JOIN users u ON u.id = c.member_id JOIN rewards rw ON rw.id = c.reward_id
        ORDER BY c.id DESC LIMIT 500`,
     )
-    .all() as unknown as Array<Record<string, unknown>>
+    .all()) as unknown as Array<Record<string, unknown>>
 
-  const ranks = db.prepare('SELECT id, name FROM ranks ORDER BY level ASC').all() as unknown as Array<{
+  const ranks = (await db.prepare('SELECT id, name FROM ranks ORDER BY level ASC').all()) as unknown as Array<{
     id: number
     name: string
   }>
@@ -1330,7 +1342,7 @@ export function rewardsAdmin() {
   }
 }
 
-export function updateReward(
+export async function updateReward(
   id: number,
   data: {
     name?: string
@@ -1342,10 +1354,10 @@ export function updateReward(
     is_active?: boolean
   },
 ) {
-  const current = db.prepare('SELECT * FROM rewards WHERE id = ?').get(id) as unknown as Record<string, unknown> | undefined
+  const current = await db.prepare('SELECT * FROM rewards WHERE id = ?').get(id) as unknown as Record<string, unknown> | undefined
   if (!current) return null
 
-  db.prepare(
+  await db.prepare(
     `UPDATE rewards SET title = ?, description = ?, cost = ?, threshold_amount = ?, budget = ?, max_claims = ?,
        required_rank_id = ?, active = ? WHERE id = ?`,
   ).run(
@@ -1370,43 +1382,42 @@ export function updateReward(
   return { id }
 }
 
-export function rewardClaimsPage(status?: string) {
+export async function rewardClaimsPage(status?: string) {
   const params: unknown[] = []
   let where = ''
   if (status) {
     where = 'WHERE c.status = ?'
     params.push(status)
   }
-  const rows = db
+  const rows = (await db
     .prepare(
       `SELECT c.id, c.member_id, c.reward_id, c.cost, c.status, c.note, c.claimed_at, c.approved_at,
               u.name AS member_name, u.member_code, rw.title AS reward_name
        FROM reward_claims c JOIN users u ON u.id = c.member_id JOIN rewards rw ON rw.id = c.reward_id
        ${where} ORDER BY c.id DESC LIMIT 500`,
     )
-    .all(...(params as never[])) as unknown as Array<Record<string, unknown>>
+    .all(...(params as never[]))) as unknown as Array<Record<string, unknown>>
 
   return { items: rows, total: rows.length, statuses: ['pending', 'approved', 'rejected'] }
 }
 
-export function approveRewardClaim(id: number, adminId: number, note?: string | null) {
-  const claim = db.prepare('SELECT * FROM reward_claims WHERE id = ?').get(id) as unknown as Record<string, unknown> | undefined
+export async function approveRewardClaim(id: number, adminId: number, note?: string | null) {
+  const claim = await db.prepare('SELECT * FROM reward_claims WHERE id = ?').get(id) as unknown as Record<string, unknown> | undefined
   if (!claim) return null
   if (claim.status !== 'pending') return null
-  const stmt = db.prepare(
+  await db.prepare(
     `UPDATE reward_claims SET status = 'approved', note = COALESCE(?, note), reviewed_by = ?, reviewed_at = datetime('now'), approved_by = ?, approved_at = datetime('now')
      WHERE id = ?`,
-  )
-  ;(stmt as any).run(note ?? null, adminId, adminId, id)
+  ).run(note ?? null, adminId, adminId, id)
   return { id, status: 'approved' }
 }
 
-export function rejectRewardClaim(id: number, adminId: number, note?: string | null) {
-  const claim = db.prepare('SELECT * FROM reward_claims WHERE id = ?').get(id) as unknown as Record<string, unknown> | undefined
+export async function rejectRewardClaim(id: number, adminId: number, note?: string | null) {
+  const claim = await db.prepare('SELECT * FROM reward_claims WHERE id = ?').get(id) as unknown as Record<string, unknown> | undefined
   if (!claim) return null
   if (claim.status !== 'pending') return null
-  reverseLedger('reward_claim', id, `Reward claim #${id} rejected`)
-  db.prepare(
+  await reverseLedger('reward_claim', id, `Reward claim #${id} rejected`)
+  await db.prepare(
     `UPDATE reward_claims SET status = 'rejected', note = COALESCE(?, note), reviewed_by = ?, reviewed_at = datetime('now'), approved_by = ?, approved_at = datetime('now')
      WHERE id = ?`,
   ).run(note ?? null, adminId, adminId, id)
@@ -1417,22 +1428,22 @@ export function rejectRewardClaim(id: number, adminId: number, note?: string | n
 /* Announcements, audit logs, jobs, settings                           */
 /* ------------------------------------------------------------------ */
 
-export function announcementsList() {
-  const rows = db
+export async function announcementsList() {
+  const rows = (await db
     .prepare(
       `SELECT a.*, u.name AS created_by_name FROM announcements a LEFT JOIN users u ON u.id = a.created_by
        ORDER BY a.id DESC LIMIT 300`,
     )
-    .all() as unknown as Array<Record<string, unknown>>
+    .all()) as unknown as Array<Record<string, unknown>>
 
   return { items: rows, total: rows.length }
 }
 
-export function createAnnouncement(
+export async function createAnnouncement(
   input: { title: string; body: string; audience: string; severity: string; expiresAt?: string | null },
   adminId: number,
 ) {
-  const info = db
+  const info = await db
     .prepare(
       `INSERT INTO announcements (title, body, audience, severity, expires_at, is_published, created_by)
        VALUES (?, ?, ?, ?, ?, 0, ?)`,
@@ -1441,11 +1452,11 @@ export function createAnnouncement(
   return Number(info.lastInsertRowid)
 }
 
-export function publishAnnouncement(id: number) {
-  db.prepare(`UPDATE announcements SET is_published = 1, published_at = datetime('now') WHERE id = ?`).run(id)
+export async function publishAnnouncement(id: number) {
+  await db.prepare(`UPDATE announcements SET is_published = 1, published_at = datetime('now') WHERE id = ?`).run(id)
 }
 
-export function auditLogsPage(input: { q?: string; action?: string; page?: number; perPage?: number }) {
+export async function auditLogsPage(input: { q?: string; action?: string; page?: number; perPage?: number }) {
   const { page, perPage } = pageParams(input.page, input.perPage)
   const where: string[] = []
   const params: unknown[] = []
@@ -1462,16 +1473,16 @@ export function auditLogsPage(input: { q?: string; action?: string; page?: numbe
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  const total = countRows(`SELECT COUNT(*) AS c FROM audit_logs l ${whereSql}`, ...params)
+  const total = await countRows(`SELECT COUNT(*) AS c FROM audit_logs l ${whereSql}`, ...params)
 
-  const rows = db
+  const rows = (await db
     .prepare(
       `SELECT l.id, l.action, l.auditable_type, l.auditable_id, l.subject_type, l.subject_id, l.payload,
               l.new_values, l.old_values, l.ip_address, l.created_at, u.name AS user_name
        FROM audit_logs l LEFT JOIN users u ON u.id = l.actor_id
        ${whereSql} ORDER BY l.id DESC LIMIT ? OFFSET ?`,
     )
-    .all(...(params as never[]), perPage, (page - 1) * perPage) as unknown as Array<Record<string, unknown>>
+    .all(...(params as never[]), perPage, (page - 1) * perPage)) as unknown as Array<Record<string, unknown>>
 
   return {
     ...paginate(
@@ -1489,7 +1500,7 @@ export function auditLogsPage(input: { q?: string; action?: string; page?: numbe
   }
 }
 
-export function jobRunsPage(input: { job?: string; status?: string }) {
+export async function jobRunsPage(input: { job?: string; status?: string }) {
   const where: string[] = []
   const params: unknown[] = []
   if (input.job) {
@@ -1502,43 +1513,45 @@ export function jobRunsPage(input: { job?: string; status?: string }) {
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
-  const rows = db
+  const rows = (await db
     .prepare(
       `SELECT id, job_name, status, processed_count, started_at, finished_at, host, error_message, created_at
        FROM scheduled_job_runs ${whereSql} ORDER BY id DESC LIMIT 500`,
     )
-    .all(...(params as never[])) as unknown as Array<Record<string, unknown>>
+    .all(...(params as never[]))) as unknown as Array<Record<string, unknown>>
 
-  const names = db
+  const names = (await db
     .prepare('SELECT DISTINCT job_name FROM scheduled_job_runs ORDER BY job_name')
-    .all() as unknown as Array<{ job_name: string }>
+    .all()) as unknown as Array<{ job_name: string }>
 
   return { items: rows, total: rows.length, jobNames: names.map((n) => n.job_name), statuses: JOB_STATUSES }
 }
 
-export function settingBool(key: string, fallback = false): boolean {
-  const row = db.prepare('SELECT value FROM application_settings WHERE key = ?').get(key) as { value: string } | undefined
+export async function settingBool(key: string, fallback = false): Promise<boolean> {
+  const row = await db.prepare('SELECT value FROM application_settings WHERE key = ?').get(key) as { value: string } | undefined
   if (!row || row.value === null || row.value === undefined) return fallback
   return row.value === '1' || row.value.toLowerCase() === 'true'
 }
 
-export function settingsOverview() {
-  const toggles = SETTING_TOGGLES.map((toggle) => ({
-    key: toggle.key,
-    label: toggle.label,
-    description: toggle.description,
-    env: toggle.env,
-    enabled: settingBool(toggle.key, toggle.default),
-  }))
+export async function settingsOverview() {
+  const toggles = await Promise.all(
+    SETTING_TOGGLES.map(async (toggle) => ({
+      key: toggle.key,
+      label: toggle.label,
+      description: toggle.description,
+      env: toggle.env,
+      enabled: await settingBool(toggle.key, toggle.default),
+    })),
+  )
 
-  const stored = db
+  const stored = (await db
     .prepare(`SELECT key, value FROM application_settings WHERE type = 'boolean'`)
-    .all() as unknown as Array<{ key: string; value: string }>
+    .all()) as unknown as Array<{ key: string; value: string }>
 
   for (const row of stored) {
     if (toggles.some((toggle) => toggle.key === row.key)) continue
     const description = (
-      db.prepare('SELECT description FROM application_settings WHERE key = ?').get(row.key) as
+      (await db.prepare('SELECT description FROM application_settings WHERE key = ?').get(row.key)) as
         | { description: string | null }
         | undefined
     )?.description
@@ -1547,28 +1560,28 @@ export function settingsOverview() {
       label: description || row.key,
       description: description ?? '',
       env: null,
-      enabled: settingBool(row.key, false),
+      enabled: await settingBool(row.key, false),
     })
   }
 
   return {
     toggles,
     rawConfig: {
-      deposits_enabled: settingBool('deposits.enabled', true),
+      deposits_enabled: await settingBool('deposits.enabled', true),
       commission_base: 'eligible_verified_amount',
       currency: config.currency,
       timezone: 'Asia/Dhaka',
-      profit_share_enabled: settingBool('profit_share.enabled', false),
+      profit_share_enabled: await settingBool('profit_share.enabled', false),
     },
   }
 }
 
-export function updateSetting(key: string, value: string) {
+export async function updateSetting(key: string, value: string) {
   const isBoolean =
     SETTING_TOGGLES.some((toggle) => toggle.key === key) || key.endsWith('.enabled') || key.endsWith('_enabled')
   const stored = isBoolean ? (value === '1' || String(value).toLowerCase() === 'true' ? '1' : '0') : value
 
-  db.prepare(
+  await db.prepare(
     `INSERT INTO application_settings (key, value, group_name, type, updated_at)
      VALUES (?, ?, 'runtime', ?, datetime('now'))
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, type = excluded.type, updated_at = datetime('now')`,
@@ -1581,46 +1594,46 @@ export function updateSetting(key: string, value: string) {
 /* Reports                                                             */
 /* ------------------------------------------------------------------ */
 
-export function reportMetrics(from: string, to: string) {
+export async function reportMetrics(from: string, to: string) {
   const metrics: Record<string, number | Record<string, number>> = {
-    total_registered_members: countRows('SELECT COUNT(*) AS c FROM users'),
-    active_members: countRows(`SELECT COUNT(*) AS c FROM users WHERE status = 'active'`),
-    inactive_members: countRows(`SELECT COUNT(*) AS c FROM users WHERE status = 'inactive'`),
-    direct_referrals_total: countRows('SELECT COUNT(*) AS c FROM users WHERE sponsor_id IS NOT NULL'),
+    total_registered_members: await countRows('SELECT COUNT(*) AS c FROM users'),
+    active_members: await countRows(`SELECT COUNT(*) AS c FROM users WHERE status = 'active'`),
+    inactive_members: await countRows(`SELECT COUNT(*) AS c FROM users WHERE status = 'inactive'`),
+    direct_referrals_total: await countRows('SELECT COUNT(*) AS c FROM users WHERE sponsor_id IS NOT NULL'),
     gross_business_volume: round2(
-      sumOf('SELECT COALESCE(SUM(gross_amount), 0) AS t FROM business_transactions WHERE created_at BETWEEN ? AND ?', from, to),
+      await sumOf('SELECT COALESCE(SUM(gross_amount), 0) AS t FROM business_transactions WHERE created_at BETWEEN ? AND ?', from, to),
     ),
     eligible_commissionable_volume: round2(
-      sumOf(
-        `SELECT COALESCE(SUM(eligible_amount), 0) AS t FROM business_transactions
+      await sumOf(
+                `SELECT COALESCE(SUM(eligible_amount), 0) AS t FROM business_transactions
          WHERE status IN ('verified', 'approved') AND created_at BETWEEN ? AND ?`,
-        from,
-        to,
-      ),
+                from,
+                to,
+              ),
     ),
-    platform_wallet_balance: round2(sumOf('SELECT COALESCE(SUM(balance), 0) AS t FROM wallet_accounts')),
+    platform_wallet_balance: round2(await sumOf('SELECT COALESCE(SUM(balance), 0) AS t FROM wallet_accounts')),
     commission_liability_pending: round2(
-      sumOf(`SELECT COALESCE(SUM(amount), 0) AS t FROM commissions WHERE status = 'pending'`),
+      await sumOf(`SELECT COALESCE(SUM(amount), 0) AS t FROM commissions WHERE status = 'pending'`),
     ),
     commission_approved_unpaid: round2(
-      sumOf(`SELECT COALESCE(SUM(amount), 0) AS t FROM commissions WHERE status = 'approved'`),
+      await sumOf(`SELECT COALESCE(SUM(amount), 0) AS t FROM commissions WHERE status = 'approved'`),
     ),
-    commission_paid: round2(sumOf(`SELECT COALESCE(SUM(amount), 0) AS t FROM commissions WHERE status = 'paid'`)),
-    salary_pending: round2(sumOf(`SELECT COALESCE(SUM(amount), 0) AS t FROM salary_payouts WHERE status = 'pending'`)),
-    salary_paid: round2(sumOf(`SELECT COALESCE(SUM(amount), 0) AS t FROM salary_payouts WHERE status = 'paid'`)),
-    withdrawals_pending: countRows(`SELECT COUNT(*) AS c FROM withdrawal_requests WHERE status = 'pending'`),
-    withdrawals_approved: countRows(`SELECT COUNT(*) AS c FROM withdrawal_requests WHERE status = 'approved'`),
+    commission_paid: round2(await sumOf(`SELECT COALESCE(SUM(amount), 0) AS t FROM commissions WHERE status = 'paid'`)),
+    salary_pending: round2(await sumOf(`SELECT COALESCE(SUM(amount), 0) AS t FROM salary_payouts WHERE status = 'pending'`)),
+    salary_paid: round2(await sumOf(`SELECT COALESCE(SUM(amount), 0) AS t FROM salary_payouts WHERE status = 'paid'`)),
+    withdrawals_pending: await countRows(`SELECT COUNT(*) AS c FROM withdrawal_requests WHERE status = 'pending'`),
+    withdrawals_approved: await countRows(`SELECT COUNT(*) AS c FROM withdrawal_requests WHERE status = 'approved'`),
     withdrawals_paid: round2(
-      sumOf(`SELECT COALESCE(SUM(amount), 0) AS t FROM withdrawal_requests WHERE status = 'paid'`),
+      await sumOf(`SELECT COALESCE(SUM(amount), 0) AS t FROM withdrawal_requests WHERE status = 'paid'`),
     ),
   }
 
-  const distribution = db
+  const distribution = (await db
     .prepare(
       `SELECT r.name, COUNT(u.id) AS members_count FROM ranks r
        LEFT JOIN users u ON u.current_rank_id = r.id GROUP BY r.id ORDER BY r.level ASC`,
     )
-    .all() as unknown as Array<{ name: string; members_count: number }>
+    .all()) as unknown as Array<{ name: string; members_count: number }>
 
   const rankDistribution: Record<string, number> = {}
   for (const row of distribution) rankDistribution[row.name] = num(row.members_count)
@@ -1670,31 +1683,31 @@ export function reportExportRows(metrics: Record<string, number | Record<string,
 /* Network explorer                                                    */
 /* ------------------------------------------------------------------ */
 
-export function networkExplorer(memberCode: string, depth: number) {
-  const root = db
+export async function networkExplorer(memberCode: string, depth: number) {
+  const root = (await db
     .prepare(
       `SELECT u.id, u.name, u.member_code, u.status, u.registered_at, r.name AS rank_name
        FROM users u LEFT JOIN ranks r ON r.id = u.current_rank_id
        WHERE u.member_code = ?`,
     )
-    .get(memberCode.trim().toUpperCase()) as unknown as Record<string, unknown> | undefined
+    .get(memberCode.trim().toUpperCase())) as unknown as Record<string, unknown> | undefined
 
   if (!root) return null
 
-  const generations = downlineByGeneration(num(root.id), Math.min(Math.max(depth, 1), 10))
+  const generations = await downlineByGeneration(num(root.id), Math.min(Math.max(depth, 1), 10))
   const generationCounts: Record<string, number> = {}
   const members: Array<Record<string, unknown>> = []
 
   for (const [generation, ids] of generations.entries()) {
     generationCounts[String(generation)] = ids.length
     if (ids.length === 0) continue
-    const rows = db
+    const rows = (await db
       .prepare(
         `SELECT u.id, u.name, u.member_code, u.status, u.registered_at, r.name AS rank_name
          FROM users u LEFT JOIN ranks r ON r.id = u.current_rank_id
          WHERE u.id IN (${ids.map(() => '?').join(',')}) ORDER BY u.id ASC`,
       )
-      .all(...(ids as never[])) as unknown as Array<Record<string, unknown>>
+      .all(...(ids as never[]))) as unknown as Array<Record<string, unknown>>
     for (const row of rows) members.push({ ...row, generation })
   }
 
@@ -1720,17 +1733,17 @@ export function toScalar(value: unknown): number | string | null {
   return scalar(value)
 }
 
-export function memberReferrals(memberId: number) {
-  return directReferrals(memberId)
+export async function memberReferrals(memberId: number) {
+  return await directReferrals(memberId)
 }
 
-export function createPendingCommissions(
+export async function createPendingCommissions(
   sourceMemberId: number,
   transactionId: number,
   amount: number,
   options: { status?: string; credit?: boolean; rates?: GenerationRate[]; planId?: number | null } = {},
 ) {
-  return generateCommissions(sourceMemberId, transactionId, amount, options)
+  return await generateCommissions(sourceMemberId, transactionId, amount, options)
 }
 
 /* ------------------------------------------------------------------ */
@@ -1744,57 +1757,59 @@ function placeholders(count: number): string {
   return Array.from({ length: count }, () => '?').join(', ')
 }
 
-function demoUserIds(): number[] {
-  return (db.prepare(`SELECT id FROM users WHERE ${DEMO_USER_PREDICATE}`).all() as Array<{ id: number }>).map((row) => row.id)
+async function demoUserIds(): Promise<number[]> {
+  return ((await db.prepare(`SELECT id FROM users WHERE ${DEMO_USER_PREDICATE}`).all()) as Array<{ id: number }>).map(
+    (row) => row.id,
+  )
 }
 
-function demoTransactionIds(): number[] {
+async function demoTransactionIds(): Promise<number[]> {
   return (
-    db
+    (await db
       .prepare(
         `SELECT id FROM business_transactions
          WHERE reference LIKE 'DEMO-%'
             OR member_id IN (SELECT id FROM users WHERE ${DEMO_USER_PREDICATE})`,
       )
-      .all() as Array<{ id: number }>
+      .all()) as Array<{ id: number }>
   ).map((row) => row.id)
 }
 
-function countIn(table: string, column: string, ids: number[]): number {
+async function countIn(table: string, column: string, ids: number[]): Promise<number> {
   if (ids.length === 0) return 0
-  return countRows(`SELECT COUNT(*) AS c FROM ${table} WHERE ${column} IN (${placeholders(ids.length)})`, ...ids)
+  return await countRows(`SELECT COUNT(*) AS c FROM ${table} WHERE ${column} IN (${placeholders(ids.length)})`, ...ids)
 }
 
-export function demoDataReport() {
-  const users = demoUserIds()
-  const transactions = demoTransactionIds()
+export async function demoDataReport() {
+  const users = await demoUserIds()
+  const transactions = await demoTransactionIds()
 
   const report = {
     demo: users.length > 0 || transactions.length > 0,
     users: users.length,
     transactions: transactions.length,
-    wallet_accounts: countIn('wallet_accounts', 'member_id', users),
-    member_profiles: countIn('member_profiles', 'member_id', users),
+    wallet_accounts: await countIn('wallet_accounts', 'member_id', users),
+    member_profiles: await countIn('member_profiles', 'member_id', users),
     commissions: transactions.length
-      ? countRows(
-          `SELECT COUNT(*) AS c FROM commissions
+      ? await countRows(
+                  `SELECT COUNT(*) AS c FROM commissions
            WHERE source_member_id IN (${placeholders(users.length || 1)})
               OR source_transaction_id IN (${placeholders(transactions.length)})`,
-          ...(users.length ? users : [-1]),
-          ...transactions,
-        )
-      : countIn('commissions', 'source_member_id', users),
-    ledger_entries: countIn('ledger_entries', 'member_id', users),
-    deposits: countIn('deposits', 'member_id', users),
-    withdrawal_requests: countIn('withdrawal_requests', 'member_id', users),
-    reward_claims: countIn('reward_claims', 'member_id', users),
-    salary_payouts: countIn('salary_payouts', 'member_id', users),
-    notifications: countIn('notifications', 'member_id', users),
-    referral_closures: countIn('referral_closures', 'ancestor_id', users),
-    rank_achievements: countIn('rank_achievements', 'member_id', users),
-    member_rank_snapshots: countIn('member_rank_snapshots', 'member_id', users),
-    reconciliation_records: countIn('reconciliation_records', 'member_id', users),
-    referral_edges: countIn('referral_edges', 'member_id', users),
+                  ...(users.length ? users : [-1]),
+                  ...transactions,
+                )
+      : await countIn('commissions', 'source_member_id', users),
+    ledger_entries: await countIn('ledger_entries', 'member_id', users),
+    deposits: await countIn('deposits', 'member_id', users),
+    withdrawal_requests: await countIn('withdrawal_requests', 'member_id', users),
+    reward_claims: await countIn('reward_claims', 'member_id', users),
+    salary_payouts: await countIn('salary_payouts', 'member_id', users),
+    notifications: await countIn('notifications', 'member_id', users),
+    referral_closures: await countIn('referral_closures', 'ancestor_id', users),
+    rank_achievements: await countIn('rank_achievements', 'member_id', users),
+    member_rank_snapshots: await countIn('member_rank_snapshots', 'member_id', users),
+    reconciliation_records: await countIn('reconciliation_records', 'member_id', users),
+    referral_edges: await countIn('referral_edges', 'member_id', users),
   }
 
   return report
@@ -1804,20 +1819,19 @@ export function demoDataReport() {
  * Remove the seeded demo network (the `@demo.test` members and the synthetic
  * `DEMO-*` business transactions) together with every dependent record.
  */
-export function deleteDemoData() {
-  const users = demoUserIds()
-  const transactions = demoTransactionIds()
-  const report = demoDataReport()
+export async function deleteDemoData() {
+  const users = await demoUserIds()
+  const transactions = await demoTransactionIds()
+  const report = await demoDataReport()
 
   if (users.length === 0 && transactions.length === 0) {
     return { deleted: false, ...report }
   }
 
-  db.exec('BEGIN')
-  try {
+  await transaction(async () => {
     if (transactions.length) {
       const ph = placeholders(transactions.length)
-      db.prepare(`DELETE FROM commissions WHERE source_transaction_id IN (${ph})`).run(...transactions)
+      await db.prepare(`DELETE FROM commissions WHERE source_transaction_id IN (${ph})`).run(...transactions)
     }
     if (users.length) {
       const ph = placeholders(users.length)
@@ -1841,25 +1855,21 @@ export function deleteDemoData() {
         'user_roles',
       ]) {
         const column = table === 'referral_closures' ? 'ancestor_id' : table === 'permission_user' ? 'user_id' : table === 'user_roles' ? 'user_id' : table === 'email_verification_tokens' ? 'user_id' : 'member_id'
-        db.prepare(`DELETE FROM ${table} WHERE ${column} IN (${ph})`).run(...users)
+        await db.prepare(`DELETE FROM ${table} WHERE ${column} IN (${ph})`).run(...users)
       }
-      db.prepare(`DELETE FROM referral_closures WHERE descendant_id IN (${ph})`).run(...users)
-      db.prepare(`DELETE FROM referral_edges WHERE sponsor_id IN (${ph})`).run(...users)
-      db.prepare(`DELETE FROM business_transactions WHERE member_id IN (${ph})`).run(...users)
-      db.prepare(`DELETE FROM users WHERE id IN (${ph})`).run(...users)
+      await db.prepare(`DELETE FROM referral_closures WHERE descendant_id IN (${ph})`).run(...users)
+      await db.prepare(`DELETE FROM referral_edges WHERE sponsor_id IN (${ph})`).run(...users)
+      await db.prepare(`DELETE FROM business_transactions WHERE member_id IN (${ph})`).run(...users)
+      await db.prepare(`DELETE FROM users WHERE id IN (${ph})`).run(...users)
     }
     if (transactions.length) {
       const ph = placeholders(transactions.length)
-      db.prepare(`DELETE FROM business_transactions WHERE id IN (${ph})`).run(...transactions)
+      await db.prepare(`DELETE FROM business_transactions WHERE id IN (${ph})`).run(...transactions)
     }
-    db.exec('COMMIT')
-  } catch (error) {
-    db.exec('ROLLBACK')
-    throw error
-  }
+  })
 
   try {
-    rebuildAllReferralClosures()
+    await rebuildAllReferralClosures()
   } catch {
     // Closure rebuild is best-effort; the rows are already gone.
   }

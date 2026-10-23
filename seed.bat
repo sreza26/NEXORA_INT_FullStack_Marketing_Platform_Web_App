@@ -18,6 +18,7 @@ if not exist "server\.env" (
   )
 )
 
+set FORCE_RESET=1
 call npm run db:reset --workspace=server
 if errorlevel 1 (
   echo [ERROR] Could not reset the database.

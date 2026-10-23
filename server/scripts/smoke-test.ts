@@ -1,29 +1,13 @@
-import fs from 'fs'
-import path from 'path'
-import { fileURLToPath } from 'url'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const serverRoot = path.resolve(__dirname, '..')
-
 process.env.NODE_ENV = 'test'
-process.env.DATABASE_FILE = 'smoke-test.sqlite'
-process.env.JWT_SECRET = 'smoke-test-secret'
+process.env.JWT_SECRET ??= 'smoke-test-secret'
 process.env.PORT = '5099'
 
-const dbFile = path.join(serverRoot, 'database', 'smoke-test.sqlite')
-for (const suffix of ['', '-wal', '-shm']) {
-  const file = `${dbFile}${suffix}`
-  if (fs.existsSync(file)) {
-    try { fs.rmSync(file) } catch {}
-  }
-}
-
 const { createApp } = await import('../src/app.js')
-const { migrate } = await import('../src/db/index.js')
+const { closeDb, migrate } = await import('../src/db/index.js')
 const { seed } = await import('../src/db/seed.js')
 
-migrate()
-seed()
+await migrate()
+await seed()
 
 const app = createApp()
 const server = app.listen(5099)
@@ -252,14 +236,7 @@ console.log('\nranks and reporting')
 }
 
 server.close()
-
-for (const suffix of ['', '-wal', '-shm']) {
-  const file = `${dbFile}${suffix}`
-  if (fs.existsSync(file)) {
-    try { fs.rmSync(file) } catch {}
-  }
-}
-try { fs.rmSync(dbFile) } catch {}
+await closeDb()
 
 console.log(`\n${passed} passed, ${failed} failed\n`)
 process.exit(failed === 0 ? 0 : 1)

@@ -5,7 +5,7 @@ full-stack application:
 
 - **Client** — React 18 + TypeScript + Vite + plain CSS
 - **Server** — Node.js + Express + TypeScript
-- **Database** — SQLite via the built-in `node:sqlite` driver (no native build step)
+- **Database** — MySQL / MariaDB via `mysql2`
 - **Scripts** — Windows batch files for install / seed / dev / build / start / test
 
 ## Quick start
@@ -17,6 +17,17 @@ dev.bat        :: run API (5000) + client (5173)
 ```
 
 Open <http://localhost:5173>.
+
+The database tables, ranks, compensation plan, roles/permissions and demo
+accounts are created automatically on first boot. You can also run them
+explicitly (from `server/`):
+
+```bash
+npm run db:seed          # migrate + seed (idempotent)
+npm run db:reset         # drop every table (set FORCE_RESET=1 outside test)
+npm run db:import-laravel  # import data from the legacy Laravel SQLite file
+npm test                 # end-to-end smoke test against the configured MySQL DB
+```
 
 Production-style run:
 
@@ -41,9 +52,10 @@ test.bat
 
 > The **developer** account is created on first boot and is hidden from the
 > member directory, member counts and every non-developer administrator. Set
-> `DEVELOPER_PASSWORD` in `server/.env` before the first boot to override the
-> password above. Once the account has the `developer` role the password is not
-> reset again on restart.
+> `DEVELOPER_PASSWORD` in `server/.env` before the first boot to choose its
+> password. Once the account has the `developer` role the password is not reset
+> on restart. The value in this table is only the fallback when the variable is
+> unset.
 
 ## Project layout
 
@@ -94,7 +106,7 @@ scripts/                helper scripts
 Sign in as the developer and open **Developer → System Debug Panel**
 (`/developer`) to inspect data normally hidden from the admin UI:
 
-- **Overview** — runtime environment, SQLite version, database file/size,
+- **Overview** — runtime environment, MySQL/MariaDB version, database size,
   memory and uptime, pending work counters, per-table row counts and recent
   scheduled job runs.
 - **Users & activity** — every account (including the developer) with roles,
@@ -116,7 +128,10 @@ Sign in as the developer and open **Developer → System Debug Panel**
 | --- | --- | --- |
 | `PORT` | API port | `5000` |
 | `JWT_SECRET` | token signing secret | dev placeholder |
-| `DATABASE_FILE` | SQLite file, relative to `server/` | `database/nexora.sqlite` |
+| `DB_HOST` / `DB_PORT` | MySQL host and port | `localhost` / `3306` |
+| `DB_NAME` / `DB_USER` / `DB_PASSWORD` | MySQL database and credentials | `nexora` / `nexora` / empty |
+| `DB_SSL` | enable TLS to MySQL | `false` |
+| `DB_POOL_LIMIT` | connection pool size | `10` |
 | `COMMISSION_GENERATION` | payout levels | `3` |
 | `COMMISSION_RATES` | rate per generation | `0.10,0.05,0.03` |
 | `WITHDRAWAL_MIN` / `WITHDRAWAL_MAX` | payout limits | `50` / `10000` |
@@ -142,10 +157,22 @@ DELETE /api/developer/demo-data (body: { "confirm": "DELETE" })
 GET  /api/public/config         GET /api/public/referral/:code   POST /api/public/contact
 ```
 
-## Deployment
+## Deployment (Hostinger Node.js)
 
-`build.bat` produces `client/dist` (static assets) and `server/dist`
+`npm run build` produces `client/dist` (static assets) and `server/dist`
 (compiled API). The Express server serves the compiled client, so a single
-Node process on any Node 22+ host runs the whole platform. Use
-`start.bat` or `npm run start` with `NODE_ENV=production` and a real
-`JWT_SECRET`.
+Node process runs the whole platform.
+
+1. Create the MySQL database and user in hPanel, then copy the credentials into
+   `server/.env` (`DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`).
+2. Set `NODE_ENV=production`, `APP_URL=https://nexoraint.net`,
+   `CLIENT_ORIGIN=https://nexoraint.net,https://www.nexoraint.net`, a strong
+   `JWT_SECRET`, and a fresh `ENCRYPTION_KEY`/`APP_KEY`.
+3. Build locally: `npm install` then `npm run build`.
+4. In hPanel → **Node.js**, set the application root to the project root and the
+   startup file to `app.js`, then run `npm install` (or upload `node_modules`).
+5. The startup file imports `server/dist/server.js`, which runs migrations,
+   seeds required roles/settings, and serves both the API and the built client.
+
+`app.js` is the Hostinger/Passenger entry point. Locally, `npm start` uses the
+same entry point; `npm run start:server` starts the compiled server directly.

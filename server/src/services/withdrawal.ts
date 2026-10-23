@@ -15,54 +15,54 @@ function withDecryptedAccount<T extends { account_details?: string | null }>(row
   }))
 }
 
-export function listWithdrawals(memberId: number, limit = 100, offset = 0) {
-  const rows = db
+export async function listWithdrawals(memberId: number, limit = 100, offset = 0): Promise<any[]> {
+  const rows = (await db
     .prepare(
       `SELECT w.id, w.member_id, u.name AS member_name, u.member_code, w.amount, w.method, w.account_details,
               w.status, w.notes, w.requested_at, w.processed_at
        FROM withdrawal_requests w JOIN users u ON u.id = w.member_id
        WHERE w.member_id = ? ORDER BY w.id DESC LIMIT ? OFFSET ?`,
     )
-    .all(memberId, limit, offset) as any[]
+    .all(memberId, limit, offset)) as any[]
   return withDecryptedAccount(rows)
 }
 
-export function listAllWithdrawals(status?: string, limit = 100, offset = 0) {
+export async function listAllWithdrawals(status?: string, limit = 100, offset = 0): Promise<any[]> {
   if (status) {
-    const rows = db
+    const rows = (await db
       .prepare(
         `SELECT w.id, w.member_id, u.name AS member_name, u.member_code, w.amount, w.method, w.account_details,
                 w.status, w.notes, w.requested_at, w.processed_at
          FROM withdrawal_requests w JOIN users u ON u.id = w.member_id
          WHERE w.status = ? ORDER BY w.id DESC LIMIT ? OFFSET ?`,
       )
-      .all(status, limit, offset) as any[]
+      .all(status, limit, offset)) as any[]
     return withDecryptedAccount(rows)
   }
-  const rows = db
+  const rows = (await db
     .prepare(
       `SELECT w.id, w.member_id, u.name AS member_name, u.member_code, w.amount, w.method, w.account_details,
               w.status, w.notes, w.requested_at, w.processed_at
        FROM withdrawal_requests w JOIN users u ON u.id = w.member_id
        ORDER BY w.id DESC LIMIT ? OFFSET ?`,
     )
-    .all(limit, offset) as any[]
+    .all(limit, offset)) as any[]
   return withDecryptedAccount(rows)
 }
 
-export function findWithdrawal(id: number) {
-  const row = db.prepare('SELECT * FROM withdrawal_requests WHERE id = ?').get(id) as any | undefined
+export async function findWithdrawal(id: number) {
+  const row = await db.prepare('SELECT * FROM withdrawal_requests WHERE id = ?').get(id) as any | undefined
   if (!row) return undefined
   return { ...row, account_details: decryptSecret(row.account_details ?? null) }
 }
 
-export function createWithdrawal(input: {
+export async function createWithdrawal(input: {
   memberId: number
   amount: number
   method: string
   accountDetails?: string
-}): { id: number; balance: number } {
-  const balance = walletBalance(input.memberId)
+}): Promise<{ id: number; balance: number }> {
+  const balance = await walletBalance(input.memberId)
   if (input.amount < config.withdrawal.minAmount) {
     throw new BusinessRuleError(`Minimum withdrawal amount is ${config.withdrawal.minAmount}`)
   }
@@ -75,7 +75,7 @@ export function createWithdrawal(input: {
 
   const reference = `WDR-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1e6).toString(36).toUpperCase()}`
 
-  const info = db
+  const info = await db
     .prepare(
       `INSERT INTO withdrawal_requests
          (member_id, reference, amount, currency, method, account_details, status, requested_at, created_at, updated_at)
@@ -91,51 +91,51 @@ export function createWithdrawal(input: {
     )
 
   const id = Number(info.lastInsertRowid)
-  const newBalance = postLedger({
-    memberId: input.memberId,
-    type: 'withdrawal',
-    direction: 'debit',
-    amount: input.amount,
-    referenceType: 'withdrawal_request',
-    referenceId: id,
-    description: `Withdrawal request #${id}`,
-    status: 'pending',
-  })
+  const newBalance = await postLedger({
+      memberId: input.memberId,
+      type: 'withdrawal',
+      direction: 'debit',
+      amount: input.amount,
+      referenceType: 'withdrawal_request',
+      referenceId: id,
+      description: `Withdrawal request #${id}`,
+      status: 'pending',
+    })
 
   return { id, balance: newBalance }
 }
 
-export function approveWithdrawal(id: number, adminId: number, notes?: string): void {
-  const request = findWithdrawal(id)
+export async function approveWithdrawal(id: number, adminId: number, notes?: string): Promise<void> {
+  const request = await findWithdrawal(id)
   if (!request) throw new BusinessRuleError('Withdrawal request not found')
   if (request.status !== 'pending') throw new BusinessRuleError('Withdrawal request is not pending')
 
-  db.prepare(
+  await db.prepare(
     `UPDATE withdrawal_requests SET status = 'approved', processed_at = datetime('now'), processed_by = ?, notes = ? WHERE id = ?`,
   ).run(adminId, notes ?? null, id)
 
-  db.prepare(`UPDATE ledger_entries SET status = 'approved' WHERE reference_type = 'withdrawal_request' AND reference_id = ?`).run(id)
+  await db.prepare(`UPDATE ledger_entries SET status = 'approved' WHERE reference_type = 'withdrawal_request' AND reference_id = ?`).run(id)
 }
 
-export function rejectWithdrawal(id: number, adminId: number, notes?: string): void {
-  const request = findWithdrawal(id)
+export async function rejectWithdrawal(id: number, adminId: number, notes?: string): Promise<void> {
+  const request = await findWithdrawal(id)
   if (!request) throw new BusinessRuleError('Withdrawal request not found')
   if (request.status !== 'pending') throw new BusinessRuleError('Withdrawal request is not pending')
 
-  reverseLedger('withdrawal_request', id, `Withdrawal request #${id} rejected`)
+  await reverseLedger('withdrawal_request', id, `Withdrawal request #${id} rejected`)
 
-  db.prepare(
+  await db.prepare(
     `UPDATE withdrawal_requests SET status = 'rejected', processed_at = datetime('now'), processed_by = ?, notes = ? WHERE id = ?`,
   ).run(adminId, notes ?? null, id)
 }
 
-export function countByStatus(status: string): number {
-  return (db.prepare('SELECT COUNT(*) AS c FROM withdrawal_requests WHERE status = ?').get(status) as { c: number }).c
+export async function countByStatus(status: string): Promise<number> {
+  return (await db.prepare('SELECT COUNT(*) AS c FROM withdrawal_requests WHERE status = ?').get(status) as { c: number }).c
 }
 
-export function approvedTotal(): number {
-  const row = db
+export async function approvedTotal(): Promise<number> {
+  const row = (await db
     .prepare(`SELECT COALESCE(SUM(amount), 0) AS total FROM withdrawal_requests WHERE status = 'approved'`)
-    .get() as { total: number }
+    .get()) as { total: number }
   return Number(row.total ?? 0)
 }

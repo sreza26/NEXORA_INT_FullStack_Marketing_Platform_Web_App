@@ -1,14 +1,14 @@
 import { db } from '../db/index.js'
 
-export function walletBalance(memberId: number): number {
-  const row = db.prepare('SELECT balance FROM wallet_accounts WHERE member_id = ?').get(memberId) as
+export async function walletBalance(memberId: number): Promise<number> {
+  const row = await db.prepare('SELECT balance FROM wallet_accounts WHERE member_id = ?').get(memberId) as
     | { balance: number }
     | undefined
   return row?.balance ?? 0
 }
 
-export function syncWalletTotals(memberId: number): void {
-  const row = db
+export async function syncWalletTotals(memberId: number): Promise<void> {
+  const row = (await db
     .prepare(
       `SELECT
          COALESCE(SUM(CASE WHEN direction = 'credit' AND status <> 'reversed' THEN amount ELSE 0 END), 0) AS credited,
@@ -17,9 +17,9 @@ export function syncWalletTotals(memberId: number): void {
                            WHEN direction = 'debit' AND status = 'pending' THEN -amount ELSE 0 END), 0) AS pending
        FROM ledger_entries WHERE member_id = ?`,
     )
-    .get(memberId) as { credited: number; debited: number; pending: number } | undefined
+    .get(memberId)) as { credited: number; debited: number; pending: number } | undefined
 
-  db.prepare(
+  await db.prepare(
     `UPDATE wallet_accounts SET
        pending_balance = ?,
        lifetime_credited = ?,
@@ -29,20 +29,20 @@ export function syncWalletTotals(memberId: number): void {
   ).run(row?.pending ?? 0, row?.credited ?? 0, row?.debited ?? 0, memberId)
 }
 
-export function listLedger(memberId: number, limit = 100, offset = 0) {
-  return db
+export async function listLedger(memberId: number, limit = 100, offset = 0): Promise<any[]> {
+  return (await db
     .prepare(
       `SELECT id, type, direction, amount, balance_after, reference_type, reference_id, description, status, created_at
        FROM ledger_entries WHERE member_id = ? ORDER BY id DESC LIMIT ? OFFSET ?`,
     )
-    .all(memberId, limit, offset) as any[]
+    .all(memberId, limit, offset)) as any[]
 }
 
 /**
  * Append-only ledger write. The balance is recalculated inside the same
  * statement batch so the ledger can never drift from the wallet.
  */
-export function postLedger(entry: {
+export async function postLedger(entry: {
   memberId: number
   type: string
   direction: 'credit' | 'debit'
@@ -51,12 +51,12 @@ export function postLedger(entry: {
   referenceId?: number | null
   description?: string | null
   status?: string
-}): number {
-  const current = walletBalance(entry.memberId)
+}): Promise<number> {
+  const current = await walletBalance(entry.memberId)
   const delta = entry.direction === 'credit' ? entry.amount : -entry.amount
   const next = Math.round((current + delta) * 100) / 100
 
-  db.prepare(
+  await db.prepare(
     `INSERT INTO ledger_entries (member_id, type, direction, amount, balance_after, reference_type, reference_id, description, status)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
@@ -71,26 +71,26 @@ export function postLedger(entry: {
     entry.status ?? 'approved',
   )
 
-  db.prepare('UPDATE wallet_accounts SET balance = ?, updated_at = datetime(\'now\') WHERE member_id = ?').run(next, entry.memberId)
-  syncWalletTotals(entry.memberId)
+  await db.prepare('UPDATE wallet_accounts SET balance = ?, updated_at = datetime(\'now\') WHERE member_id = ?').run(next, entry.memberId)
+  await syncWalletTotals(entry.memberId)
 
   return next
 }
 
-export function reverseLedger(referenceType: string, referenceId: number, description: string): void {
-  const entries = db
+export async function reverseLedger(referenceType: string, referenceId: number, description: string): Promise<void> {
+  const entries = (await db
     .prepare(
       `SELECT * FROM ledger_entries WHERE reference_type = ? AND reference_id = ? AND status = 'approved'`,
     )
-    .all(referenceType, referenceId) as any[]
+    .all(referenceType, referenceId)) as any[]
 
   for (const entry of entries) {
-    db.prepare(`UPDATE ledger_entries SET status = 'reversed' WHERE id = ?`).run(entry.id)
-    const current = walletBalance(entry.member_id)
+    await db.prepare(`UPDATE ledger_entries SET status = 'reversed' WHERE id = ?`).run(entry.id)
+    const current = await walletBalance(entry.member_id)
     const delta = entry.direction === 'credit' ? -entry.amount : entry.amount
     const next = Math.round((current + delta) * 100) / 100
 
-    db.prepare(
+    await db.prepare(
       `INSERT INTO ledger_entries (member_id, type, direction, amount, balance_after, reference_type, reference_id, description, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'approved')`,
     ).run(
@@ -103,7 +103,7 @@ export function reverseLedger(referenceType: string, referenceId: number, descri
       referenceId,
       description,
     )
-    db.prepare('UPDATE wallet_accounts SET balance = ?, updated_at = datetime(\'now\') WHERE member_id = ?').run(next, entry.member_id)
-    syncWalletTotals(entry.member_id)
+    await db.prepare('UPDATE wallet_accounts SET balance = ?, updated_at = datetime(\'now\') WHERE member_id = ?').run(next, entry.member_id)
+    await syncWalletTotals(entry.member_id)
   }
 }

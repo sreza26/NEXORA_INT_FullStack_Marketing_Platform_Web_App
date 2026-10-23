@@ -38,21 +38,16 @@ if not exist "server\.env" (
   )
 )
 
-if not exist "server\database\nexora.sqlite" (
-  echo [INFO] Database not found. Seeding database...
-  call npm run db:reset --workspace=server >nul 2>&1
-  call npm run db:seed --workspace=server
-  if errorlevel 1 (
-    echo [ERROR] Database seeding failed.
-    pause
-    exit /b 1
-  )
-  echo [OK] Database seeded.
-  echo      Admin: admin@nexora.test / Password123!
-  echo      Member: leader@nexora.test / Password123!
-) else (
-  echo [OK] Database found.
+echo [INFO] Applying database migrations and seed data...
+call npm run db:seed --workspace=server
+if errorlevel 1 (
+  echo [ERROR] Database migration failed. Check the DB_* values in server\.env.
+  pause
+  exit /b 1
 )
+echo [OK] Database ready.
+echo      Admin: admin@nexora.test / Password123!
+echo      Member: leader@nexora.test / Password123!
 
 echo.
 echo [INFO] Starting NEXORA (API: http://localhost:5000 ^| App: http://localhost:5173)

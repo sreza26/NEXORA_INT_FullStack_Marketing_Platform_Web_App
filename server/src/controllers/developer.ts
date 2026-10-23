@@ -1,4 +1,3 @@
-import fs from 'fs'
 import os from 'os'
 import process from 'process'
 import type { Request, Response } from 'express'
@@ -10,32 +9,39 @@ import * as svc from '../services/admin.js'
 
 const startedAt = new Date()
 
-function tableCounts() {
-  const tables = db
+async function tableCounts() {
+  const tables = (await db
     .prepare(
-      `SELECT name FROM sqlite_master
-       WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`,
+      `SELECT table_name AS name FROM information_schema.tables
+       WHERE table_schema = DATABASE() ORDER BY table_name`,
     )
-    .all() as Array<{ name: string }>
+    .all()) as Array<{ name: string }>
 
   const counts: Record<string, number> = {}
   for (const table of tables) {
-    counts[table.name] = svc.countRows(`SELECT COUNT(*) AS c FROM ${table.name}`)
+    counts[table.name] = await svc.countRows(`SELECT COUNT(*) AS c FROM \`${table.name}\``)
   }
   return counts
 }
 
-function databaseSize(): number {
+async function databaseSize(): Promise<number> {
   try {
-    return fs.statSync(config.databaseFile).size
+    const row = (await db
+      .prepare(
+        `SELECT COALESCE(SUM(data_length + index_length), 0) AS size
+         FROM information_schema.tables WHERE table_schema = DATABASE()`,
+      )
+      .get()) as { size: number } | undefined
+    return Number(row?.size ?? 0)
   } catch {
     return 0
   }
 }
 
-export function overview(_req: Request, res: Response) {
+export async function overview(_req: Request, res: Response) {
   const memory = process.memoryUsage()
-  const counts = tableCounts()
+  const counts = await tableCounts()
+  const size = await databaseSize()
 
   res.json({
     environment: {
@@ -53,25 +59,25 @@ export function overview(_req: Request, res: Response) {
       uptime_seconds: Math.round(process.uptime()),
       memory_rss_mb: Math.round((memory.rss / 1024 / 1024) * 10) / 10,
       memory_heap_mb: Math.round((memory.heapUsed / 1024 / 1024) * 10) / 10,
-      database_file: config.databaseFile,
-      database_size_kb: Math.round((databaseSize() / 1024) * 10) / 10,
-      sqlite_version: (db.prepare('SELECT sqlite_version() AS v').get() as { v: string }).v,
+      database_name: config.db.name,
+      database_size_kb: Math.round((size / 1024) * 10) / 10,
+      mysql_version: ((await db.prepare('SELECT VERSION() AS v').get()) as { v: string }).v,
       currency: config.currency,
       bcrypt_rounds: config.bcryptRounds,
       jwt_expires_in: config.jwtExpiresIn,
     },
     tables: counts,
-    pending: svc.pendingCounts(),
-    recentJobRuns: svc.jobRunRows(10),
-    demoData: svc.demoDataReport(),
+    pending: await svc.pendingCounts(),
+    recentJobRuns: await svc.jobRunRows(10),
+    demoData: await svc.demoDataReport(),
   })
 }
 
-export function users(req: Request, res: Response) {
+export async function users(req: Request, res: Response) {
   const q = String(req.query.q ?? '').trim()
   const like = `%${q.toLowerCase()}%`
 
-  const rows = db
+  const rows = (await db
     .prepare(
       `SELECT u.id, u.name, u.email, u.member_code, u.phone, u.status, u.verification_status,
               u.sponsor_id, u.registered_at, u.created_at, u.updated_at, u.email_verified_at,
@@ -86,7 +92,7 @@ export function users(req: Request, res: Response) {
        WHERE (? = '' OR lower(u.name) LIKE ? OR lower(u.email) LIKE ? OR lower(u.member_code) LIKE ?)
        ORDER BY u.id DESC LIMIT 500`,
     )
-    .all(q, like, like, like) as unknown as Array<Record<string, unknown>>
+    .all(q, like, like, like)) as unknown as Array<Record<string, unknown>>
 
   res.json({
     items: rows.map((row) => {
@@ -102,50 +108,50 @@ export function users(req: Request, res: Response) {
   })
 }
 
-export function userDetail(req: Request, res: Response) {
+export async function userDetail(req: Request, res: Response) {
   const id = Number(req.params.id)
-  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as Record<string, unknown> | undefined
+  const row = await db.prepare('SELECT * FROM users WHERE id = ?').get(id) as Record<string, unknown> | undefined
   if (!row) throw new HttpError(404, 'User not found')
 
   const roles = (
-    db
+    (await db
       .prepare('SELECT r.name, r.label FROM roles r JOIN user_roles ur ON ur.role_id = r.id WHERE ur.user_id = ? ORDER BY r.name')
-      .all(id) as Array<{ name: string; label: string | null }>
+      .all(id)) as Array<{ name: string; label: string | null }>
   ).map((role) => ({ name: role.name, label: role.label ?? role.name }))
 
-  const profile = db.prepare('SELECT * FROM member_profiles WHERE member_id = ?').get(id) ?? null
-  const wallet = db.prepare('SELECT * FROM wallet_accounts WHERE member_id = ?').get(id) ?? null
+  const profile = (await db.prepare('SELECT * FROM member_profiles WHERE member_id = ?').get(id)) ?? null
+  const wallet = (await db.prepare('SELECT * FROM wallet_accounts WHERE member_id = ?').get(id)) ?? null
 
-  const transactions = db
+  const transactions = await db
     .prepare(
       `SELECT id, reference, gross_amount, eligible_amount, amount, type, description, status, created_at, verified_at
        FROM business_transactions WHERE member_id = ? ORDER BY id DESC LIMIT 50`,
     )
     .all(id)
-  const commissions = db
+  const commissions = await db
     .prepare(
       `SELECT id, source_member_id, source_transaction_id, generation, amount, rate, status, created_at
        FROM commissions WHERE recipient_id = ? ORDER BY id DESC LIMIT 50`,
     )
     .all(id)
-  const ledger = db
+  const ledger = await db
     .prepare(
       `SELECT id, type, direction, amount, status, description, created_at
        FROM ledger_entries WHERE member_id = ? ORDER BY id DESC LIMIT 50`,
     )
     .all(id)
-  const notifications = db
+  const notifications = await db
     .prepare(
       `SELECT id, title, body, read_at, created_at FROM notifications WHERE member_id = ? ORDER BY id DESC LIMIT 50`,
     )
     .all(id)
-  const audit = db
+  const audit = await db
     .prepare(
       `SELECT id, action, subject_type, subject_id, ip_address, created_at FROM audit_logs
        WHERE actor_id = ? OR (subject_type = 'user' AND subject_id = ?) ORDER BY id DESC LIMIT 50`,
     )
     .all(id, id)
-  const snapshots = db
+  const snapshots = await db
     .prepare(
       `SELECT id, rank_id, period, salary_eligible, personal_volume, group_volume, direct_referrals, created_at
        FROM member_rank_snapshots WHERE member_id = ? ORDER BY id DESC LIMIT 24`,
@@ -165,7 +171,7 @@ export function userDetail(req: Request, res: Response) {
   })
 }
 
-export function activity(req: Request, res: Response) {
+export async function activity(req: Request, res: Response) {
   const q = String(req.query.q ?? '').trim()
   const action = String(req.query.action ?? '').trim()
   const page = Math.max(1, Number(req.query.page ?? 1) || 1)
@@ -184,11 +190,11 @@ export function activity(req: Request, res: Response) {
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
-  const total = svc.countRows(
-    `SELECT COUNT(*) AS c FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_id ${whereSql}`,
-    ...params,
-  )
-  const items = db
+  const total = await svc.countRows(
+      `SELECT COUNT(*) AS c FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_id ${whereSql}`,
+      ...params,
+    )
+  const items = await db
     .prepare(
       `SELECT a.id, a.actor_id, a.action, a.subject_type, a.subject_id, a.ip_address, a.created_at,
               u.name AS actor_name, u.email AS actor_email
@@ -198,8 +204,15 @@ export function activity(req: Request, res: Response) {
     .all(...(params as never[]), perPage, (page - 1) * perPage)
 
   const actions = (
-    db.prepare('SELECT DISTINCT action FROM audit_logs ORDER BY action').all() as Array<{ action: string }>
+    (await db.prepare('SELECT DISTINCT action FROM audit_logs ORDER BY action').all()) as Array<{ action: string }>
   ).map((row) => row.action)
+
+  const recentTransactions = await db
+    .prepare(
+      `SELECT t.id, t.reference, t.amount, t.status, t.created_at, u.name AS member_name, u.email AS member_email
+       FROM business_transactions t LEFT JOIN users u ON u.id = t.member_id ORDER BY t.id DESC LIMIT 25`,
+    )
+    .all()
 
   res.json({
     items,
@@ -208,27 +221,22 @@ export function activity(req: Request, res: Response) {
     perPage,
     totalPages: Math.max(1, Math.ceil(total / perPage)),
     actions,
-    recentTransactions: db
-      .prepare(
-        `SELECT t.id, t.reference, t.amount, t.status, t.created_at, u.name AS member_name, u.email AS member_email
-         FROM business_transactions t LEFT JOIN users u ON u.id = t.member_id ORDER BY t.id DESC LIMIT 25`,
-      )
-      .all(),
-    recentJobRuns: svc.jobRunRows(25),
+    recentTransactions,
+    recentJobRuns: await svc.jobRunRows(25),
   })
 }
 
-export function demoData(_req: Request, res: Response) {
-  res.json(svc.demoDataReport())
+export async function demoData(_req: Request, res: Response) {
+  res.json(await svc.demoDataReport())
 }
 
-export function purgeDemoData(req: Request, res: Response) {
+export async function purgeDemoData(req: Request, res: Response) {
   const schema = z.object({ confirm: z.literal('DELETE') })
   schema.parse(req.body ?? {})
 
-  const result = svc.deleteDemoData()
+  const result = await svc.deleteDemoData()
   if (result.deleted) {
-    svc.recordAudit(req.user!.id, 'developer.demo_data.deleted', 'system', null, result, req.ip)
+    await svc.recordAudit(req.user!.id, 'developer.demo_data.deleted', 'system', null, result, req.ip)
   }
   res.json(result)
 }

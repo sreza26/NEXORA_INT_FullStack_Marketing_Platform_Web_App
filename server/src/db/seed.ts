@@ -1,4 +1,4 @@
-import { db, migrate } from './index.js'
+import { db, ensureColumn, migrate } from './index.js'
 import { createUser, findUserByEmail, hashPassword } from '../models/user.js'
 import { DEFAULT_GENERATION_RATES } from '../config/index.js'
 import {
@@ -101,22 +101,22 @@ export const REWARDS = [
   },
 ]
 
-export function seedRoles() {
+export async function seedRoles() {
   const insert = db.prepare('INSERT OR IGNORE INTO roles (name) VALUES (?)')
-  for (const role of ROLES) insert.run(role)
+  for (const role of ROLES) await insert.run(role)
 
   const label = db.prepare('UPDATE roles SET label = ?, description = ? WHERE name = ?')
   for (const role of ROLES) {
     const meta = ROLE_META[role]
-    label.run(meta.label, meta.description, role)
+    await label.run(meta.label, meta.description, role)
   }
 }
 
-export function seedCompensationPlan() {
-  const count = (db.prepare('SELECT COUNT(*) AS c FROM compensation_plans').get() as { c: number }).c
+export async function seedCompensationPlan() {
+  const count = ((await db.prepare('SELECT COUNT(*) AS c FROM compensation_plans').get()) as { c: number }).c
   if (count > 0) return
 
-  const info = db
+  const info = await db
     .prepare(
       `INSERT INTO compensation_plans (version, name, status, is_active, commission_base, eligible_transaction_types, created_at)
        VALUES (1, 'Standard Generation Plan', 'draft', 0, 'eligible_verified_amount', 'sale,deposit,other', datetime('now'))`,
@@ -128,11 +128,11 @@ export function seedCompensationPlan() {
     'INSERT INTO compensation_plan_rates (plan_id, generation_from, generation_to, rate) VALUES (?, ?, ?, ?)',
   )
   for (const rate of DEFAULT_GENERATION_RATES) {
-    insertRate.run(planId, rate.generation_from, rate.generation_to, rate.rate)
+    await insertRate.run(planId, rate.generation_from, rate.generation_to, rate.rate)
   }
 }
 
-export function seedRanks() {
+export async function seedRanks() {
   const insertRank = db.prepare(
     `INSERT INTO ranks (code, name, level, salary, min_direct_links, downline_volume, is_active)
      VALUES (?, ?, ?, ?, ?, ?, 1)
@@ -152,12 +152,12 @@ export function seedRanks() {
   const clearRequirements = db.prepare('DELETE FROM rank_requirements WHERE rank_id = ?')
 
   for (const rank of RANKS) {
-    insertRank.run(rank.code, rank.name, rank.level, rank.salary, rank.min_direct_links, rank.downline_volume)
-    const row = db.prepare('SELECT id FROM ranks WHERE code = ?').get(rank.code) as { id: number }
-    clearRequirements.run(row.id)
+    await insertRank.run(rank.code, rank.name, rank.level, rank.salary, rank.min_direct_links, rank.downline_volume)
+    const row = (await db.prepare('SELECT id FROM ranks WHERE code = ?').get(rank.code)) as { id: number }
+    await clearRequirements.run(row.id)
     const requirements = RANK_REQUIREMENTS[rank.code] ?? []
-    requirements.forEach((requirement, index) => {
-      insertRequirement.run(
+    for (const [index, requirement] of requirements.entries()) {
+      await insertRequirement.run(
         row.id,
         requirement.type,
         requirement.value,
@@ -165,19 +165,19 @@ export function seedRanks() {
         requirement.target_rank_code ?? null,
         index + 1,
       )
-    })
+    }
   }
 }
 
-export function seedAdmin(email = 'admin@nexora.test', password = 'Password123!') {
-  if (findUserByEmail(email)) return null
-  return createUser({
-    name: 'Platform Admin',
-    email,
-    password,
-    roles: ['super_admin', 'finance_admin', 'compliance_officer'],
-    verificationStatus: 'verified',
-  })
+export async function seedAdmin(email = 'admin@nexora.test', password = 'Password123!') {
+  if (await findUserByEmail(email)) return null
+  return await createUser({
+      name: 'Platform Admin',
+      email,
+      password,
+      roles: ['super_admin', 'finance_admin', 'compliance_officer'],
+      verificationStatus: 'verified',
+    })
 }
 
 /**
@@ -191,43 +191,45 @@ export function seedAdmin(email = 'admin@nexora.test', password = 'Password123!'
 export const DEVELOPER_EMAIL = 'sreza26@gmail.com'
 export const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD ?? 'NexoraDev@2026!'
 
-export function seedDeveloper() {
-  const developerRole = db.prepare('SELECT id FROM roles WHERE name = ?').get('developer') as { id: number } | undefined
+export async function seedDeveloper() {
+  const developerRole = (await db.prepare('SELECT id FROM roles WHERE name = ?').get('developer')) as
+    | { id: number }
+    | undefined
   if (!developerRole) return null
 
-  const existing = findUserByEmail(DEVELOPER_EMAIL)
+  const existing = await findUserByEmail(DEVELOPER_EMAIL)
   if (existing) {
     if (existing.roles.includes('developer')) return existing
 
     // First conversion of the account: replace any member grants with the
     // developer role and set the documented password so the owner can sign in.
-    db.prepare('DELETE FROM user_roles WHERE user_id = ?').run(existing.id)
-    db.prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)').run(existing.id, developerRole.id)
-    db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(
+    await db.prepare('DELETE FROM user_roles WHERE user_id = ?').run(existing.id)
+    await db.prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)').run(existing.id, developerRole.id)
+    await db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(
       hashPassword(DEVELOPER_PASSWORD),
       existing.id,
     )
-    return findUserByEmail(DEVELOPER_EMAIL)
+    return await findUserByEmail(DEVELOPER_EMAIL)
   }
 
-  return createUser({
-    name: 'System Developer',
-    email: DEVELOPER_EMAIL,
-    password: DEVELOPER_PASSWORD,
-    roles: ['developer'],
-    verificationStatus: 'verified',
-  })
+  return await createUser({
+      name: 'System Developer',
+      email: DEVELOPER_EMAIL,
+      password: DEVELOPER_PASSWORD,
+      roles: ['developer'],
+      verificationStatus: 'verified',
+    })
 }
 
-export function seedDemoNetwork() {
-  if (findUserByEmail('leader@nexora.test')) return null
+export async function seedDemoNetwork() {
+  if (await findUserByEmail('leader@nexora.test')) return null
 
-  const leader = createUser({
-    name: 'Ayesha Rahman',
-    email: 'leader@nexora.test',
-    password: 'Password123!',
-    roles: ['member'],
-  })
+  const leader = await createUser({
+      name: 'Ayesha Rahman',
+      email: 'leader@nexora.test',
+      password: 'Password123!',
+      roles: ['member'],
+    })
 
   const members = [
     { name: 'Rafi Islam', email: 'rafi@nexora.test', sponsor: leader.id },
@@ -245,13 +247,13 @@ export function seedDemoNetwork() {
   const created = [leader]
   for (const member of members) {
     created.push(
-      createUser({
-        name: member.name,
-        email: member.email,
-        password: 'Password123!',
-        sponsorId: member.sponsor,
-        roles: ['member'],
-      }),
+      await createUser({
+                name: member.name,
+                email: member.email,
+                password: 'Password123!',
+                sponsorId: member.sponsor,
+                roles: ['member'],
+              }),
     )
   }
 
@@ -266,31 +268,31 @@ export function seedDemoNetwork() {
  * Later boots only add missing grants so administrator changes survive a
  * restart.
  */
-export function seedPermissions() {
-  ensurePermissionCatalogue()
+export async function seedPermissions() {
+  await ensurePermissionCatalogue()
 
-  const existing = (db.prepare('SELECT COUNT(*) AS c FROM permission_role').get() as { c: number }).c
+  const existing = ((await db.prepare('SELECT COUNT(*) AS c FROM permission_role').get()) as { c: number }).c
 
   if (existing === 0) {
-    migrateLegacyRolePermissions()
-    syncRolePermissionMatrix()
+    await migrateLegacyRolePermissions()
+    await syncRolePermissionMatrix()
   }
 
-  dropLegacyRolePermissions()
+  await dropLegacyRolePermissions()
 }
 
-export function seedRewards() {
+export async function seedRewards() {
   const insert = db.prepare(
     'INSERT INTO rewards (title, description, image_path, cost, threshold_amount, active) VALUES (?, ?, ?, ?, ?, 1)',
   )
   const find = db.prepare('SELECT id FROM rewards WHERE title = ?')
   for (const reward of REWARDS) {
-    if (find.get(reward.title)) continue
-    insert.run(reward.title, reward.description, reward.image_path, reward.cost, reward.cost)
+    if (await find.get(reward.title)) continue
+    await insert.run(reward.title, reward.description, reward.image_path, reward.cost, reward.cost)
   }
 }
 
-export function seedSettings() {
+export async function seedSettings() {
   const defaults = [
     ['deposits.enabled', '1', 'boolean'],
     ['deposits.commissionable', '0', 'boolean'],
@@ -302,54 +304,50 @@ export function seedSettings() {
   ]
 
   for (const [key, value, type] of defaults) {
-    db.prepare(
+    await db.prepare(
       `INSERT OR IGNORE INTO application_settings (key, value, group_name, type) VALUES (?, ?, 'runtime', ?)`,
     ).run(key, value, type)
   }
 }
 
-function ensureColumn(table: string, column: string, type: string, defaultValue?: string) {
-  const info = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
-  if (info.some((c) => c.name === column)) return
-  const def = defaultValue !== undefined ? ` DEFAULT ${defaultValue}` : ''
-  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}${def}`)
-}
+export async function seed() {
+  await migrate()
+  await ensureColumn('member_profiles', 'full_name', 'TEXT')
+  await ensureColumn('member_profiles', 'nid_number', 'TEXT')
+  await ensureColumn('member_profiles', 'nid_document_path', 'TEXT')
+  await ensureColumn('member_profiles', 'selfie_document_path', 'TEXT')
+  await ensureColumn('member_profiles', 'emergency_contact', 'TEXT')
+  await ensureColumn('users', 'email_verified_at', 'TEXT')
+  await seedRoles()
+  await seedPermissions()
+  await seedSettings()
 
-export function seed() {
-  migrate()
-  ensureColumn('member_profiles', 'full_name', 'TEXT')
-  ensureColumn('member_profiles', 'nid_number', 'TEXT')
-  ensureColumn('member_profiles', 'nid_document_path', 'TEXT')
-  ensureColumn('member_profiles', 'selfie_document_path', 'TEXT')
-  ensureColumn('member_profiles', 'emergency_contact', 'TEXT')
-  ensureColumn('users', 'email_verified_at', 'TEXT')
-  seedRoles()
-  seedPermissions()
-  seedSettings()
-  seedDeveloper()
-
-  const hasUsers = (db.prepare('SELECT COUNT(*) AS c FROM users').get() as { c: number }).c > 0
-  if (hasUsers) return
-
-  seedRanks()
-  seedCompensationPlan()
-  seedAdmin()
-  seedDemoNetwork()
-  try {
-    rebuildAllReferralClosures()
-  } catch {
-    // Referral closures are rebuilt when possible.
+  const hasUsers = (await db.prepare('SELECT COUNT(*) AS c FROM users').get() as { c: number }).c > 0
+  if (!hasUsers) {
+    await seedRanks()
+    await seedCompensationPlan()
+    await seedAdmin()
+    await seedDemoNetwork()
+    try {
+      await rebuildAllReferralClosures()
+    } catch {
+      // Referral closures are rebuilt when possible.
+    }
+    await seedRewards()
+    await seedMemberExtras()
   }
-  seedRewards()
-  seedMemberExtras()
+
+  await seedDeveloper()
 }
 
-export function seedMemberExtras() {
-  const leader = db.prepare('SELECT id FROM users WHERE email = ?').get('leader@nexora.test') as { id: number } | undefined
+export async function seedMemberExtras() {
+  const leader = (await db.prepare('SELECT id FROM users WHERE email = ?').get('leader@nexora.test')) as
+    | { id: number }
+    | undefined
   if (leader) {
-    db.prepare('INSERT INTO wallet_accounts (member_id, currency) VALUES (?, ?) ON CONFLICT(member_id) DO NOTHING').run(leader.id, 'USD')
-    db.prepare(`INSERT INTO ledger_entries (member_id, type, direction, amount, balance_after, reference_type, description, status)
+    await db.prepare('INSERT INTO wallet_accounts (member_id, currency) VALUES (?, ?) ON CONFLICT(member_id) DO NOTHING').run(leader.id, 'USD')
+    await db.prepare(`INSERT INTO ledger_entries (member_id, type, direction, amount, balance_after, reference_type, description, status)
       VALUES (?, 'commission', 'credit', 250.00, 250.00, 'commission', 'Direct commission', 'completed')`).run(leader.id)
-    db.prepare(`UPDATE wallet_accounts SET balance = 250.00 WHERE member_id = ?`).run(leader.id)
+    await db.prepare(`UPDATE wallet_accounts SET balance = 250.00 WHERE member_id = ?`).run(leader.id)
   }
 }

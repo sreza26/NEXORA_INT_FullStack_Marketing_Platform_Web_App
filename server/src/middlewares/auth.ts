@@ -28,7 +28,7 @@ export function signToken(user: AuthUser): string {
   })
 }
 
-export function authenticate(req: Request, res: Response, next: NextFunction) {
+export async function authenticate(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization ?? ''
   const token = header.startsWith('Bearer ') ? header.slice(7) : null
 
@@ -39,7 +39,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 
   try {
     const payload = jwt.verify(token, config.jwtSecret) as unknown as { sub: number | string }
-    const user = findUserById(Number(payload.sub))
+    const user = await findUserById(Number(payload.sub))
     if (!user) {
       res.status(401).json({ message: 'Account not found' })
       return
