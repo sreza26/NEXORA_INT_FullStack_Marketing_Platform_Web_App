@@ -18,7 +18,7 @@ export default function LandingPage() {
 
   return (
     <>
-      <section className="relative overflow-hidden border-b border-slate-200/70 bg-gradient-to-b from-white via-white to-surface">
+      <section className="relative overflow-hidden border-b border-slate-200/70 bg-gradient-to-b from-white via-white to-surface dark:border-slate-700/70 dark:from-navy-950 dark:via-navy-900 dark:to-navy-950">
         <div aria-hidden="true" className="pointer-events-none absolute inset-0">
           <div className="nx-blob absolute -left-24 -top-24 h-72 w-72 rounded-full bg-accent-400/15 blur-3xl sm:h-96 sm:w-96"></div>
           <div className="nx-blob nx-blob-slow absolute -right-24 top-40 h-72 w-72 rounded-full bg-navy-900/10 blur-3xl sm:h-96 sm:w-96"></div>
@@ -26,14 +26,14 @@ export default function LandingPage() {
 
         <div className="relative mx-auto grid max-w-7xl gap-12 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:items-center lg:gap-16 lg:px-8 lg:py-24">
           <div>
-            <h1 className="nx-rise text-balance text-4xl font-black leading-[1.08] tracking-tight text-navy-950 sm:text-5xl xl:text-6xl">
+            <h1 className="nx-rise text-balance text-4xl font-black leading-[1.08] tracking-tight text-navy-950 dark:text-white sm:text-5xl xl:text-6xl">
               Build your network with{' '}
               <span className="bg-gradient-to-r from-accent-500 via-accent-400 to-accent-600 bg-clip-text text-transparent">
                 transparent
               </span>{' '}
               compensation.
             </h1>
-            <p className="nx-rise nx-rise-1 mt-5 max-w-xl text-base leading-relaxed text-slate-600 sm:text-lg">
+            <p className="nx-rise nx-rise-1 mt-5 max-w-xl text-base leading-relaxed text-slate-600 dark:text-slate-300 sm:text-lg">
               {'NEXORA tracks referrals, generation bonuses, ranks, monthly salaries\n'}
               {'and travel rewards with an auditable double-entry ledger — every payout backed by a verified sale.'}
             </p>
@@ -48,19 +48,19 @@ export default function LandingPage() {
             <dl className="nx-rise nx-rise-3 mt-10 grid grid-cols-3 gap-3 border-t border-slate-200 pt-6 sm:gap-6">
               <div>
                 <dt className="stat-label text-[10px] sm:text-xs">Generations tracked</dt>
-                <dd className="text-xl font-black text-navy-900 sm:text-3xl" data-count-to="20">
+                <dd className="text-xl font-black text-navy-900 dark:text-white sm:text-3xl" data-count-to="20">
                   20
                 </dd>
               </div>
               <div>
                 <dt className="stat-label text-[10px] sm:text-xs">Rank levels</dt>
-                <dd className="text-xl font-black text-navy-900 sm:text-3xl" data-count-to={rankCount}>
+                <dd className="text-xl font-black text-navy-900 dark:text-white sm:text-3xl" data-count-to={rankCount}>
                   {rankCount}
                 </dd>
               </div>
               <div>
                 <dt className="stat-label text-[10px] sm:text-xs">Reward trips</dt>
-                <dd className="text-xl font-black text-navy-900 sm:text-3xl" data-count-to={rewardCount}>
+                <dd className="text-xl font-black text-navy-900 dark:text-white sm:text-3xl" data-count-to={rewardCount}>
                   {rewardCount}
                 </dd>
               </div>
@@ -78,8 +78,8 @@ export default function LandingPage() {
                   <TrendingUp className="h-5 w-5" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block font-bold text-navy-900">Marketing plan</span>
-                  <span className="block text-sm text-slate-600">
+                  <span className="block font-bold text-navy-900 dark:text-white">Marketing plan</span>
+                  <span className="block text-sm text-slate-600 dark:text-slate-300">
                     Generation bonus rates &amp; how commissions are earned
                   </span>
                 </span>
@@ -93,8 +93,8 @@ export default function LandingPage() {
                   <Trophy className="h-5 w-5" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block font-bold text-navy-900">Rank &amp; salary plan</span>
-                  <span className="block text-sm text-slate-600">Eight ranks from Rise to NDC with monthly salaries</span>
+                  <span className="block font-bold text-navy-900 dark:text-white">Rank &amp; salary plan</span>
+                  <span className="block text-sm text-slate-600 dark:text-slate-300">Eight ranks from Rise to NDC with monthly salaries</span>
                 </span>
                 <ChevronRight className="h-5 w-5 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-accent-500" />
               </Link>
@@ -106,8 +106,8 @@ export default function LandingPage() {
                   <Gift className="h-5 w-5" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block font-bold text-navy-900">Travel rewards</span>
-                  <span className="block text-sm text-slate-600">Company-funded trips unlocked at rank milestones</span>
+                  <span className="block font-bold text-navy-900 dark:text-white">Travel rewards</span>
+                  <span className="block text-sm text-slate-600 dark:text-slate-300">Company-funded trips unlocked at rank milestones</span>
                 </span>
                 <ChevronRight className="h-5 w-5 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-accent-500" />
               </Link>
@@ -119,7 +119,7 @@ export default function LandingPage() {
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="page-title">How NEXORA works</h2>
-          <p className="mt-3 text-slate-600">Three simple steps from registration to your first payout.</p>
+          <p className="mt-3 text-slate-600 dark:text-slate-300">Three simple steps from registration to your first payout.</p>
         </div>
         <div className="mt-12 grid gap-10 md:grid-cols-3 md:gap-6">
           <div className="card card-pad relative transition duration-300 hover:-translate-y-1 hover:shadow-md">
