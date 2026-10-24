@@ -548,4 +548,4 @@ Make the smallest correct change, verify it, and report what you did.
 - `npm audit` may show issues in some environments; they are often network-related or dependency transitive issues.
 - Backups are written to `backups/`; the folder is not ignored by git, by design
   for the requested GitHub backup workflow. Review PII exposure before pushing.
-- Hostinger builds call `node ../node_modules/.bin/tsc` / `vite` from workspace build scripts for compatibility with npm workspace installs.
+- Hostinger builds call `node ../node_modules/typescript/bin/tsc` / `vite` from workspace build scripts for compatibility with npm workspace installs.
