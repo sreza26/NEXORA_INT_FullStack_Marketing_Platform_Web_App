@@ -168,7 +168,7 @@ Node process runs the whole platform.
 2. Set `NODE_ENV=production`, `APP_URL=https://nexoraint.net`,
    `CLIENT_ORIGIN=https://nexoraint.net,https://www.nexoraint.net`, a strong
    `JWT_SECRET`, and a fresh `ENCRYPTION_KEY`/`APP_KEY`.
-3. Build: `npm install` then `npm run build` (uses `npx --yes tsc` in workspaces for Hostinger compatibility).
+3. Build: `npm install` then `npm run build` (workspaces call tools from root `node_modules/.bin` for Hostinger compatibility).
 4. In hPanel → **Node.js**, set the application root to the project root and the
    startup file to `app.js`, then run `npm install` (or upload `node_modules`).
 5. The startup file imports `server/dist/server.js`, which runs migrations,
