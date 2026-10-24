@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build": "node ../../node_modules/typescript/bin/tsc --project tsconfig.json || npx --yes typescript tsc --project tsconfig.json",
+    "build": "npx --yes tsc",
     "dev": "tsc --watch"
   },
   "devDependencies": {
