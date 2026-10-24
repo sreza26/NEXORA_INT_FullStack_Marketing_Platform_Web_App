@@ -12,8 +12,8 @@
     }
   },
   "scripts": {
-    "build": "npx --yes tsc@5.7.2 -p tsconfig.json",
-    "dev": "npx --yes tsc@5.7.2 --watch"
+    "build": "npx --yes -p typescript@5.7.2 tsc -p tsconfig.json",
+    "dev": "npx --yes -p typescript@5.7.2 tsc --watch"
   },
   "devDependencies": {
     "typescript": "^5.7.2"
