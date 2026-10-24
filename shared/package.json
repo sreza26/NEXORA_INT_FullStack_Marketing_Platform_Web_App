@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build": "node ../node_modules/typescript/bin/tsc",
+    "build": "npx --yes tsc",
     "dev": "tsc --watch"
   },
   "devDependencies": {
