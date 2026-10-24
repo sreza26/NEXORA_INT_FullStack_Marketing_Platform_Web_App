@@ -15,9 +15,9 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "install:all": "npm install && npm install --workspace=client && npm install --workspace=server && npm install --workspace=shared",
-    "build": "npm i --no-save typescript @types/express @types/cors @types/compression @types/bcryptjs @types/jsonwebtoken @types/node vite @vitejs/plugin-react --legacy-peer-deps && npx --yes typescript -p shared/tsconfig.json && npx --yes typescript -p server/tsconfig.json && npx --yes vite build --config client/vite.config.ts",
+    "build": "npm install typescript @types/express @types/cors @types/compression @types/bcryptjs @types/jsonwebtoken @types/node vite @vitejs/plugin-react @types/react @types/react-dom --legacy-peer-deps && npm run build --workspace=@nexora/shared && npm run build --workspace=@nexora/server && cd client && ../node_modules/.bin/vite build || npx --yes vite build",
     "build:workspaces": "npm run build -w shared && npm run build -w client && npm run build -w server",
-    "build:force": "npx --yes typescript -p shared/tsconfig.json && npx --yes typescript -p server/tsconfig.json && npx --yes vite build --config client/vite.config.ts",
+    "build:force": "npm run build",
     "start": "node app.js",
     "start:server": "npm run start -w server"
   },
