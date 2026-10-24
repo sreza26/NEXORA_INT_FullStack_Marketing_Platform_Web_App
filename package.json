@@ -15,7 +15,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "install:all": "npm install && npm install --workspace=client && npm install --workspace=server && npm install --workspace=shared",
-    "build": "npm install typescript @types/express @types/cors @types/compression @types/bcryptjs @types/jsonwebtoken @types/node vite @vitejs/plugin-react @types/react @types/react-dom --legacy-peer-deps && npm run build --workspace=@nexora/shared && npm run build --workspace=@nexora/server && cd client && ../node_modules/.bin/vite build || npx --yes vite build",
+    "build": "npm run build -w @nexora/shared && npm run build -w @nexora/server && npm run build -w @nexora/client",
     "build:workspaces": "npm run build -w shared && npm run build -w client && npm run build -w server",
     "build:force": "npm run build",
     "start": "node app.js",

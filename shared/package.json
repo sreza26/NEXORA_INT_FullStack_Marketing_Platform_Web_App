@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build": "npx --yes tsc",
+    "build": "tsc -p tsconfig.json",
     "dev": "tsc --watch"
   },
   "devDependencies": {
