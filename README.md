@@ -44,18 +44,35 @@ npm test --workspace=server
 
 ## Demo accounts
 
-| Role      | Email                | Password        |
-| --------- | -------------------- | --------------- |
-| Developer | sreza26@gmail.com    | `NexoraDev@2026!` |
-| Admin     | admin@nexora.test    | `Password123!`  |
-| Member    | leader@nexora.test   | `Password123!`  |
+### Admin / staff
 
-> The **developer** account is created on first boot and is hidden from the
-> member directory, member counts and every non-developer administrator. Set
-> `DEVELOPER_PASSWORD` in `server/.env` before the first boot to choose its
-> password. Once the account has the `developer` role the password is not reset
-> on restart. The value in this table is only the fallback when the variable is
-> unset.
+| Role      | Email                  | Password        |
+| --------- | ---------------------- | --------------- |
+| Developer | `sreza26@gmail.com`    | `NexoraDev@2026!` |
+| Admin     | `admin@nexora.test`    | `Password123!`  |
+| Developer | `dev@nexora.test`      | (set via `.env`)  |
+
+### Members (demo network seeded on first boot)
+
+All demo members use password `Password123!`. The leader is the network root:
+
+| Name              | Email                  | Role   |
+| ----------------- | ---------------------- | ------ |
+| Ayesha Rahman     | `leader@nexora.test`   | Member |
+| Rafi Islam        | `rafi@nexora.test`     | Member |
+| Nusrat Jahan      | `nusrat@nexora.test`   | Member |
+| Tanvir Ahmed      | `tanvir@nexora.test`   | Member |
+| Mehedi Hasan      | `mehedi@nexora.test`   | Member |
+| Sumaiya Akter     | `sumaiya@nexora.test`  | Member |
+| Imran Kabir       | `imran@nexora.test`    | Member |
+| Farhana Akter     | `farhana@nexora.test`  | Member |
+| Sabbir Hossain    | `sabbir@nexora.test`   | Member |
+| Ruba Islam        | `ruba@nexora.test`     | Member |
+| Shakib Al Amin    | `shakib@nexora.test`   | Member |
+
+> The **developer** account is hidden from the member directory and every
+> non-developer administrator. Set `DEVELOPER_PASSWORD` in `server/.env` before
+> first boot. Once created it is not reset on restart.
 
 ## Project layout
 
