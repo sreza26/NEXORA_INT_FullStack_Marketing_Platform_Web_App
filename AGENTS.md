@@ -49,6 +49,8 @@ Key runtime packages:
 - `express-async-errors` (must stay the **first import** in `server/src/app.ts`)
 - `helmet`, `cors`, `compression`
 - `mysql2`, `zod`, `bcryptjs`, `jsonwebtoken`, `dotenv`
+- `body-parser` override (`1.20.9`) — CVE-2026-111181 fix in root `package.json`
+- `esbuild` override (`0.28.1`) — GHSA-gv7w-rqvm-qjhr fix in root `package.json`
 
 ---
 

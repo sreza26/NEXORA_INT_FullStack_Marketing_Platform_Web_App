@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { Bell, LogOut, Menu, X } from 'lucide-react'
+import { ThemeToggle } from './ThemeToggle'
 import { hasAnyPermission, hasPermission, type AuthUser } from '../lib/auth'
 
 export interface NavItem {
@@ -73,7 +74,7 @@ export function Shell({
   return (
     <div className="min-h-screen lg:flex">
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 -translate-x-full flex-col bg-navy-950 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 -translate-x-full flex-col bg-white transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 dark:bg-navy-950 ${
           mobileOpen ? 'translate-x-0' : ''
         }`}
       >
@@ -90,7 +91,7 @@ export function Shell({
               <span className="block font-black text-white">NEXORA</span>
               <span
                 className={`block text-[10px] uppercase tracking-widest ${
-                  isAdmin ? 'text-gold-400' : 'text-slate-500'
+                  isAdmin ? 'text-gold-400' : 'text-slate-500 dark:text-slate-400'
                 }`}
               >
                 {isAdmin ? 'Admin Console' : 'Marketing & Network Management Platform'}
@@ -108,7 +109,7 @@ export function Shell({
         </div>
 
         <nav
-          className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4 text-sm"
+          className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4 text-sm dark:bg-navy-950"
           aria-label={isAdmin ? 'Admin console' : 'Member portal'}
         >
           {groups.map((group) => {
@@ -160,7 +161,7 @@ export function Shell({
       )}
 
       <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-slate-200 bg-white/90 px-4 backdrop-blur sm:px-6">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-slate-200 bg-white/90 px-4 backdrop-blur sm:px-6 dark:border-slate-700 dark:bg-navy-950/90">
           <button
             type="button"
             className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden"
@@ -176,7 +177,8 @@ export function Shell({
             <div className="hidden items-center gap-2 text-sm text-slate-500 sm:flex">{headerBadges}</div>
           )}
 
-          <div className="ml-auto flex items-center gap-3">
+           <div className="ml-auto flex items-center gap-3">
+            <ThemeToggle />
             {headerActions}
             <div className="flex items-center gap-2">
               <span
@@ -187,7 +189,7 @@ export function Shell({
                 {name.slice(0, 1).toUpperCase()}
               </span>
               <div className="hidden text-left leading-tight sm:block">
-                <p className="text-sm font-semibold text-navy-900">{name}</p>
+                <p className="text-sm font-semibold text-navy-900 dark:text-slate-200">{name}</p>
                 <p className="text-[11px] text-slate-400">{subtitle}</p>
               </div>
             </div>

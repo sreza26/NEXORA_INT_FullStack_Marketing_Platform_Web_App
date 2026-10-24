@@ -138,6 +138,15 @@ Sign in as the developer and open **Developer → System Debug Panel**
 | `SPONSOR_REQUIRED` | force a sponsor code at registration | `false` |
 | `CLIENT_ORIGIN` | allowed CORS origins | `http://localhost:5173` |
 
+> **Withdrawal settings** (`withdrawals.enabled`, `min_amount`, `max_amount`,
+> `hold_days`) are now DB-backed (seeded from `.env` on first boot) and can be
+> changed from Admin → Settings without redeploying. `SCHEMA_VERSION` was bumped
+> to `'2'` in `server/src/db/seed.ts`.
+
+> **Package overrides** for `body-parser` (`1.20.9`) and `esbuild` (`0.28.1`)
+> are set in root/workspace `package.json` to address CVE reports (`CVE-2026-111181`,
+> `GHSA-gv7w-rqvm-qjhr`).
+
 ## API overview
 
 ```
@@ -173,6 +182,22 @@ Node process runs the whole platform.
    startup file to `app.js`, then run `npm install` (or upload `node_modules`).
 5. The startup file imports `server/dist/server.js`, which runs migrations,
    seeds required roles/settings, and serves both the API and the built client.
+
+## Theme (Dark / Light)
+
+A toggle button appears in the header on every page (public, member
+portal, admin console, auth pages) and switches between light and dark
+mode. The preference is saved to `localStorage` (`nexora_theme`) and
+respects the system `prefers-color-scheme` when set to `system`.
+
+- Light mode uses `--color-surface` (#f6f8fb)
+- Dark mode applies `dark:` Tailwind classes and overrides body/background
+  with `#050d1f` (navy-950)
+- All UI components (cards, inputs, tables, badges, buttons, nav) include
+  dark-mode styling via the CSS layer (`@custom-variant dark`)
+
+Files: `client/src/lib/theme.tsx`, `client/src/components/ThemeToggle.tsx`,
+`client/src/styles/index.css`, `client/src/main.tsx`.
 
 `app.js` is the Hostinger/Passenger entry point. Locally, `npm start` uses the
 same entry point; `npm run start:server` starts the compiled server directly.

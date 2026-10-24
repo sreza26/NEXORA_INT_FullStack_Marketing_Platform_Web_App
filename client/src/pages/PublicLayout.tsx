@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Menu } from 'lucide-react'
 import { useBodyClass } from '../lib/useBodyClass'
+import { ThemeToggle } from '../components/ThemeToggle'
 
 const navLinks = [
   { to: '/marketing-plan', label: 'Marketing Plan' },
@@ -25,7 +26,7 @@ export default function PublicLayout() {
 
   const content = (
     <>
-      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 backdrop-blur dark:border-slate-700/70 dark:bg-navy-900/85">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-2">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy-900 text-sm font-black text-accent-400">LX</span>
@@ -44,6 +45,7 @@ export default function PublicLayout() {
           </nav>
 
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <Link to="/login" className="btn btn-ghost btn-sm">Log in</Link>
             <Link to="/register" className="btn btn-accent btn-sm hidden sm:inline-block">Join now</Link>
             <button
@@ -79,7 +81,7 @@ export default function PublicLayout() {
         <Outlet />
       </main>
 
-      <footer className="border-t border-slate-200 bg-white">
+      <footer className="border-t border-slate-200 bg-white dark:border-slate-700 dark:bg-navy-900">
         <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-4 lg:px-8">
           <div>
             <div className="flex items-center gap-2">
