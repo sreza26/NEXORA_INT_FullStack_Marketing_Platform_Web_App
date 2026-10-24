@@ -23,6 +23,7 @@
   "devDependencies": {
     "concurrently": "^9.1.0",
     "typescript": "^5.7.2",
-    "vite": "^6.0.6"
+    "vite": "^6.0.6",
+    "@vitejs/plugin-react": "^4.3.4"
   }
 }
