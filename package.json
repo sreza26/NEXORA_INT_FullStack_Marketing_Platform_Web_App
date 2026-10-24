@@ -15,10 +15,10 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "install:all": "npm install && npm install --workspace=client && npm install --workspace=server && npm install --workspace=shared",
-    "build": "npm run build --workspace=@nexora/shared && npm run build --workspace=@nexora/client && npm run build --workspace=@nexora/server",
-    "build:force": "npx --yes typescript -p shared/tsconfig.json && npx --yes typescript -p server/tsconfig.json && npm run build --workspace=@nexora/client",
+    "build": "npm run build -w shared && npm run build -w client && npm run build -w server",
+    "build:force": "npx --yes typescript -p shared/tsconfig.json && npx --yes typescript -p server/tsconfig.json && npm run build -w client",
     "start": "node app.js",
-    "start:server": "npm run start --workspace=server"
+    "start:server": "npm run start -w server"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
