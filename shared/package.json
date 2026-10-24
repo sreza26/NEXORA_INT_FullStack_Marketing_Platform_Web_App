@@ -12,8 +12,8 @@
     }
   },
   "scripts": {
-    "build": "node ../node_modules/typescript/bin/tsc -p tsconfig.json",
-    "dev": "tsc --watch"
+    "build": "npx --yes tsc@5.7.2 -p tsconfig.json",
+    "dev": "npx --yes tsc@5.7.2 --watch"
   },
   "devDependencies": {
     "typescript": "^5.7.2"
