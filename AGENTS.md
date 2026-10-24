@@ -1,4 +1,4 @@
-# NEXORA — Full Project Prompt for AI Agents & Vibe Coders
+# NEXORA_INT_FullStack_Marketing_Platform_Web_App — Full Project Prompt for AI Agents & Vibe Coders
 
 > **How to use this file**
 > Paste this file into an AI coding agent's context (or keep it at the repo root as
@@ -6,7 +6,7 @@
 > guardrails and verification steps needed to make correct changes without
 > re-discovering the codebase.
 >
-> **Project root:** `D:\AI_CODING\NEXORA_FullStack_TS` (Windows, PowerShell 5.1)
+> **Project root:** `D:\RZ_FOLDER\Project_Antigravity\Lirunex_Web_App\NEXORA_INT_FullStack_Marketing_Platform_Web_App` (Windows, PowerShell 5.1)
 > **Production domain:** `https://nexoraint.net`
 > **Runtime:** Node.js ≥ 20 (ESM), MySQL/MariaDB
 
@@ -545,8 +545,7 @@ Make the smallest correct change, verify it, and report what you did.
   in the current source (no `/developer/database/*` routes).
 - `server/database/` may contain legacy SQLite files; they are not used at runtime.
 - The legacy Laravel importer is destructive and requires explicit confirmation.
-- `npm audit` may fail with a registry `ECONNRESET`; that is a network error, not a
-  detected vulnerability. `npm install` currently reports 0 vulnerabilities
-  (Zod is pinned to `^4.6.7`).
+- `npm audit` may show issues in some environments; they are often network-related or dependency transitive issues.
 - Backups are written to `backups/`; the folder is not ignored by git, by design
   for the requested GitHub backup workflow. Review PII exposure before pushing.
+- Hostinger builds use `npx --yes tsc` in workspace build scripts for compatibility when `tsc` is not in PATH.
