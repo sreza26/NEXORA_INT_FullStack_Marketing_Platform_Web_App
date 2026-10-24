@@ -5,6 +5,7 @@ import { decryptSecret } from '../utils/crypto.js'
 import { generateCommissions } from './commission.js'
 import { directReferrals, downlineByGeneration } from './tree.js'
 import { rebuildAllReferralClosures } from './closure.js'
+import { getWithdrawalHoldDays } from './settings.js'
 
 export const MEMBER_STATUSES = ['active', 'inactive', 'suspended', 'terminated']
 export const VERIFICATION_STATUSES = ['unverified', 'pending', 'verified', 'rejected']
@@ -643,7 +644,7 @@ export async function depositsPage(status?: string) {
     total: rows.length,
     statuses: DEPOSIT_STATUSES,
     policyEnabled: await settingBool('deposits.enabled', true),
-    holdDays: config.withdrawal.holdDays,
+    holdDays: await getWithdrawalHoldDays(),
   }
 }
 

@@ -301,6 +301,10 @@ export async function seedSettings() {
     ['rank.require_separate_branches', '0', 'boolean'],
     ['referral.allow_registration_without_sponsor', '1', 'boolean'],
     ['legal.review_completed', '0', 'boolean'],
+    ['withdrawals.enabled', String((process.env.WITHDRAWAL_ENABLED ?? 'true') === 'true' ? '1' : '0'), 'boolean'],
+    ['withdrawals.min_amount', String(process.env.WITHDRAWAL_MIN ?? '10'), 'number'],
+    ['withdrawals.max_amount', String(process.env.WITHDRAWAL_MAX ?? '10000'), 'number'],
+    ['withdrawals.hold_days', String(process.env.WITHDRAWAL_HOLD_DAYS ?? '3'), 'number'],
   ]
 
   for (const [key, value, type] of defaults) {
@@ -310,7 +314,7 @@ export async function seedSettings() {
   }
 }
 
-const SCHEMA_VERSION = '1'
+const SCHEMA_VERSION = '2'
 
 async function schemaVersion(): Promise<string | null> {
   try {

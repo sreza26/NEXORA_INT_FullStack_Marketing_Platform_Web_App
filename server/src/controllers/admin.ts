@@ -9,6 +9,7 @@ import { createReward, listClaims, listRewards, resolveClaim } from '../services
 import { evaluateRank, listRanks, runMonthlySalary } from '../services/rank.js'
 import { buildXlsx } from '../utils/xlsx.js'
 import * as svc from '../services/admin.js'
+import { invalidateSetting } from '../services/settings.js'
 
 function getAdminId(req: Request): number {
   return req.user!.id
@@ -685,6 +686,7 @@ export async function updateSettings(req: Request, res: Response) {
   const body = req.body as Record<string, unknown>
   for (const [key, value] of Object.entries(body)) {
     await svc.updateSetting(key, String(value))
+    invalidateSetting(key)
   }
   await svc.recordAudit(getAdminId(req), 'settings.updated', null, null, body, req.ip)
   res.json({ success: true })

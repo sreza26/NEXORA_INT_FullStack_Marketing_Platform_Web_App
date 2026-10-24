@@ -6,6 +6,7 @@ import { listRanksWithRequirements } from '../services/rank.js'
 import { listTravelRewards } from '../services/reward.js'
 import { clientIp, rateLimit } from '../middlewares/rateLimit.js'
 import { db } from '../db/index.js'
+import { getWithdrawalSettings } from '../services/settings.js'
 
 const router = Router()
 
@@ -13,6 +14,8 @@ router.get('/config', async (_req, res) => {
   const plan = (await db
     .prepare('SELECT id, version, status FROM compensation_plans WHERE is_active = 1 ORDER BY version DESC LIMIT 1')
     .get()) as { id: number; version: number; status: string } | undefined
+
+  const withdrawal = await getWithdrawalSettings()
 
   res.json({
     app_name: 'NEXORA',
@@ -23,7 +26,7 @@ router.get('/config', async (_req, res) => {
       generation_rates: config.commission.generationRates,
     },
     plan: plan ?? null,
-    withdrawal: { min: config.withdrawal.minAmount, max: config.withdrawal.maxAmount, hold_days: config.withdrawal.holdDays },
+    withdrawal: { min: withdrawal.minAmount, max: withdrawal.maxAmount, hold_days: withdrawal.holdDays, enabled: withdrawal.enabled },
     registration: { sponsor_required: config.registration.sponsorRequired },
     ranks: await listRanksWithRequirements(),
     rewards: await listTravelRewards(true),

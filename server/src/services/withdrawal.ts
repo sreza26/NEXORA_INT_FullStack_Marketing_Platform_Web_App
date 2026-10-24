@@ -3,6 +3,7 @@ import { config } from '../config/index.js'
 import { postLedger, reverseLedger, walletBalance } from '../models/ledger.js'
 import { decryptSecret, encryptSecret } from '../utils/crypto.js'
 import { BusinessRuleError } from '../utils/errors.js'
+import { getWithdrawalMaxAmount, getWithdrawalMinAmount } from './settings.js'
 
 /**
  * Withdrawal rows carry an encrypted account detail. The value is decrypted
@@ -63,11 +64,13 @@ export async function createWithdrawal(input: {
   accountDetails?: string
 }): Promise<{ id: number; balance: number }> {
   const balance = await walletBalance(input.memberId)
-  if (input.amount < config.withdrawal.minAmount) {
-    throw new BusinessRuleError(`Minimum withdrawal amount is ${config.withdrawal.minAmount}`)
+  const minAmount = await getWithdrawalMinAmount()
+  const maxAmount = await getWithdrawalMaxAmount()
+  if (input.amount < minAmount) {
+    throw new BusinessRuleError(`Minimum withdrawal amount is ${minAmount}`)
   }
-  if (input.amount > config.withdrawal.maxAmount) {
-    throw new BusinessRuleError(`Maximum withdrawal amount is ${config.withdrawal.maxAmount}`)
+  if (input.amount > maxAmount) {
+    throw new BusinessRuleError(`Maximum withdrawal amount is ${maxAmount}`)
   }
   if (input.amount > balance) {
     throw new BusinessRuleError('Insufficient wallet balance')
