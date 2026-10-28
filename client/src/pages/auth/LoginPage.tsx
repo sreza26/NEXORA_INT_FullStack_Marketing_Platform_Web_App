@@ -31,7 +31,7 @@ export default function LoginPage() {
   return (
     <div className="card card-pad">
       <h1 className="text-2xl font-bold text-navy-900">Welcome back</h1>
-      <p className="mt-1 text-sm text-slate-500">Log in to your NEXORA member account.</p>
+      <p className="mt-1 text-sm text-slate-500">Log in to your NEXORA INT member account.</p>
 
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
         <div>
@@ -87,7 +87,7 @@ export default function LoginPage() {
       </form>
 
       <p className="mt-6 text-center text-sm text-slate-500">
-        New to NEXORA?
+        New to NEXORA INT?
         <Link to="/register" className="font-semibold text-accent-600 hover:text-accent-500">Create an account</Link>
       </p>
     </div>

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Menu } from 'lucide-react'
 import { useBodyClass } from '../lib/useBodyClass'
+import { FooterCredit } from '../components/FooterCredit'
 import { ThemeToggle } from '../components/ThemeToggle'
 
 const navLinks = [
@@ -29,9 +30,9 @@ export default function PublicLayout() {
       <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 backdrop-blur dark:border-slate-700/70 dark:bg-navy-900/85">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy-900 text-sm font-black text-accent-400">LX</span>
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy-900 text-sm font-black text-accent-400">NX</span>
             <span className="leading-tight">
-              <span className="block text-lg font-black tracking-tight text-navy-900">NEXORA</span>
+              <span className="block text-lg font-black tracking-tight text-navy-900 dark:text-white">NEXORA INT</span>
               <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">Marketing &amp; Network Management Platform</span>
             </span>
           </Link>
@@ -85,8 +86,8 @@ export default function PublicLayout() {
         <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-4 lg:px-8">
           <div>
             <div className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-navy-900 text-xs font-black text-accent-400">LX</span>
-              <span className="font-black text-navy-900">NEXORA</span>
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-navy-900 text-xs font-black text-accent-400">NX</span>
+              <span className="font-black text-navy-900 dark:text-white">NEXORA INT</span>
             </div>
             <p className="mt-3 text-sm text-slate-500">Marketing &amp; Network Management Platform</p>
           </div>
@@ -115,8 +116,11 @@ export default function PublicLayout() {
             </ul>
           </div>
         </div>
-        <div className="border-t border-slate-100 py-5 text-center text-xs text-slate-400">
-          &copy; {new Date().getFullYear()} NEXORA. All rights reserved.
+        <div className="border-t border-slate-100 py-5">
+          <div className="flex flex-col items-center justify-between gap-3 text-[10px] text-slate-400 sm:flex-row">
+            <span>&copy; {new Date().getFullYear()} NEXORA INT. All rights reserved.</span>
+            <FooterCredit />
+          </div>
         </div>
       </footer>
     </>

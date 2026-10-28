@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { Bell, LogOut, Menu, X } from 'lucide-react'
+import { FooterCredit } from './FooterCredit'
 import { ThemeToggle } from './ThemeToggle'
 import { hasAnyPermission, hasPermission, type AuthUser } from '../lib/auth'
 
@@ -85,10 +86,10 @@ export function Shell({
                 isAdmin ? 'bg-gold-400' : 'bg-accent-500'
               }`}
             >
-              LX
+              NX
             </span>
             <div className="leading-tight">
-              <span className="block font-black text-white">NEXORA</span>
+              <span className="block font-black text-navy-900 dark:text-white">NEXORA INT</span>
               <span
                 className={`block text-[10px] uppercase tracking-widest ${
                   isAdmin ? 'text-gold-400' : 'text-slate-500 dark:text-slate-400'
@@ -199,6 +200,12 @@ export function Shell({
         {banner}
 
         <main className="p-4 sm:p-6 lg:p-8">{children}</main>
+        <footer className="border-t border-slate-200 bg-white/60 px-4 py-3 dark:border-slate-700 dark:bg-navy-950/60">
+          <div className="flex flex-col items-center justify-between gap-2 text-[10px] text-slate-500 dark:text-slate-300 sm:flex-row">
+            <span>&copy; {new Date().getFullYear()} NEXORA INT. All rights reserved.</span>
+            <FooterCredit />
+          </div>
+        </footer>
       </div>
     </div>
   )

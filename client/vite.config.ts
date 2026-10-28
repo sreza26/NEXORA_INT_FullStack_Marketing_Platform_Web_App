@@ -11,6 +11,12 @@ export default defineConfig({
       '@nexora/shared': path.resolve(__dirname, '../shared/index.ts'),
     },
   },
+  build: {
+    target: 'es2022',
+  },
+  esbuild: {
+    target: 'es2022',
+  },
   server: {
     port: 5173,
     proxy: {

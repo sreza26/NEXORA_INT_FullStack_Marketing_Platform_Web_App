@@ -34,7 +34,7 @@ export default function LandingPage() {
               compensation.
             </h1>
             <p className="nx-rise nx-rise-1 mt-5 max-w-xl text-base leading-relaxed text-slate-600 dark:text-slate-300 sm:text-lg">
-              {'NEXORA tracks referrals, generation bonuses, ranks, monthly salaries\n'}
+              {'NEXORA INT tracks referrals, generation bonuses, ranks, monthly salaries\n'}
               {'and travel rewards with an auditable double-entry ledger — every payout backed by a verified sale.'}
             </p>
             <div className="nx-rise nx-rise-2 mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
@@ -166,7 +166,7 @@ export default function LandingPage() {
           <div className="nx-blob absolute -top-24 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-accent-500/20 blur-3xl"></div>
         </div>
         <div className="relative mx-auto flex max-w-7xl flex-col items-center gap-5 px-4 py-16 text-center sm:px-6 sm:py-20 lg:px-8">
-          <h2 className="text-balance text-3xl font-black tracking-tight text-white sm:text-4xl">Ready to join NEXORA?</h2>
+          <h2 className="text-balance text-3xl font-black tracking-tight text-white sm:text-4xl">Ready to join NEXORA INT?</h2>
           <p className="max-w-xl text-slate-400">
             Registration takes a minute. You will receive a unique member code and referral link immediately.
           </p>
