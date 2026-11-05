@@ -92,7 +92,35 @@ server/                 Express API
   scripts/              seed, reset, smoke test
 shared/types/           types shared between client and server
 scripts/                helper scripts
+flowchart/              system flowchart (SVG source + JPG render)
 ```
+
+## System flowchart
+
+![NEXORA platform flowchart — entry, domain workflows and persistence](flowchart/nexora-system-flowchart.jpg)
+
+The diagram is stored twice: `flowchart/nexora-system-flowchart.jpg` (image used
+above) and `flowchart/nexora-system-flowchart.svg` (editable vector source).
+
+It reads top to bottom in three lanes:
+
+1. **Entry, authentication and role routing** — public site → register/login →
+   `authenticate` → `requireRole` / `requirePermission` → member, admin or
+   developer portal. Every API call carries the JWT and is re-checked on the
+   server; the UI additionally hides actions with `hasPermission`.
+2. **Domain workflows** — each request box feeds a service, a decision, and then
+   a ledger outcome:
+   - business transaction → commission engine → approved → wallet credit
+     (+ ledger entry) or rejected (no payout);
+   - withdrawal request → wallet hold (immediate debit) → approved → paid
+     (ledger debit) or rejected → reversal refund;
+   - rank engine → salary period run → approved → wallet credit or held pending;
+   - reward claim → eligibility check → approved → claim kept or rejected →
+     refund with a reversal entry.
+3. **Persistence and platform** — MySQL/MariaDB through the `mysql2` pool,
+   idempotent `migrate()` + `seed()`, ledger reconciliation against wallet
+   balances, audit/notification rows, and scheduled jobs (salary runs,
+   reconciliation).
 
 ## Business rules
 
